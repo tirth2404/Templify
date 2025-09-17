@@ -1,20 +1,74 @@
 const jwt = require('jsonwebtoken');
+const User = require('../models/User');
 
-function auth(req, res, next) {
-  const header = req.headers.authorization;
-  if (!header || !header.startsWith('Bearer ')) {
-    return res.status(401).json({ success: false, message: 'Unauthorized' });
-  }
-  const token = header.split(' ')[1];
+const auth = async (req, res, next) => {
   try {
+    const token = req.header('Authorization')?.replace('Bearer ', '') || req.cookies.token;
+    
+    if (!token) {
+      return res.status(401).json({ success: false, message: 'Access denied. No token provided.' });
+    }
+
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
-    req.user = decoded;
+    const user = await User.findById(decoded.id).select('-passwordHash');
+    
+    if (!user) {
+      return res.status(401).json({ success: false, message: 'Invalid token. User not found.' });
+    }
+
+    if (!user.isActive) {
+      return res.status(401).json({ success: false, message: 'Account is deactivated.' });
+    }
+
+    req.user = user;
     next();
-  } catch (e) {
-    return res.status(401).json({ success: false, message: 'Invalid token' });
+  } catch (error) {
+    if (error.name === 'JsonWebTokenError') {
+      return res.status(401).json({ success: false, message: 'Invalid token.' });
+    } else if (error.name === 'TokenExpiredError') {
+      return res.status(401).json({ success: false, message: 'Token expired.' });
+    }
+    
+    res.status(500).json({ success: false, message: 'Server error during authentication.' });
   }
-}
+};
 
-module.exports = { auth };
+const adminAuth = async (req, res, next) => {
+  try {
+    await auth(req, res, () => {
+      if (req.user.role !== 'admin') {
+        return res.status(403).json({ 
+          success: false, 
+          message: 'Access denied. Admin privileges required.' 
+        });
+      }
+      next();
+    });
+  } catch (error) {
+    res.status(500).json({ success: false, message: 'Server error during admin authentication.' });
+  }
+};
 
+const optionalAuth = async (req, res, next) => {
+  try {
+    const token = req.header('Authorization')?.replace('Bearer ', '') || req.cookies.token;
+    
+    if (token) {
+      const decoded = jwt.verify(token, process.env.JWT_SECRET);
+      const user = await User.findById(decoded.id).select('-passwordHash');
+      
+      if (user && user.isActive) {
+        req.user = user;
+      }
+    }
+    
+    next();
+  } catch (error) {
+    // For optional auth, we just proceed without user
+    next();
+  }
+};
 
+module.exports = { auth, adminAuth, optionalAuth };
+
+// =====================================================

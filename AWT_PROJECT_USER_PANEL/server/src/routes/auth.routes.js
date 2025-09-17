@@ -1,13 +1,30 @@
-const router = require('express').Router();
-const ctrl = require('../controllers/auth.controller');
-const { auth } = require('../middlewares/auth.middleware');
+const express = require('express');
+const router = express.Router();
+const {
+  register,
+  login,
+  getProfile,
+  updateProfile,
+  changePassword,
+  logout
+} = require('../controllers/auth.controller');
+const { auth } = require('../middleware/auth.middleware');
+const {
+  validateSignup,
+  validateLogin,
+  validateUpdateProfile,
+  validateChangePassword
+} = require('../middleware/validation.middleware');
 
-router.post('/signup', ctrl.signup);
-router.post('/login', ctrl.login);
-router.get('/me', auth, ctrl.me);
-router.put('/me', auth, ctrl.updateMe);
-router.post('/change-password', auth, ctrl.changePassword);
+// Public routes
+router.post('/register', validateSignup, register);
+router.post('/signup', validateSignup, register); // Alternative endpoint
+router.post('/login', validateLogin, login);
+
+// Protected routes
+router.get('/me', auth, getProfile);
+router.put('/me', auth, validateUpdateProfile, updateProfile);
+router.post('/change-password', auth, validateChangePassword, changePassword);
+router.post('/logout', auth, logout);
 
 module.exports = router;
-
-
