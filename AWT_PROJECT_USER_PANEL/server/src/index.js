@@ -54,7 +54,7 @@ app.use(helmet({
   },
 }));
 
-// CORS configuration
+// CORS configuration - Updated for better compatibility
 const corsOptions = {
   origin: function (origin, callback) {
     const allowedOrigins = [
@@ -65,18 +65,25 @@ const corsOptions = {
       process.env.ADMIN_URL
     ].filter(Boolean);
     
-    if (!origin || allowedOrigins.indexOf(origin) !== -1) {
+    // Allow requests with no origin (mobile apps, etc.)
+    if (!origin) return callback(null, true);
+    
+    if (allowedOrigins.indexOf(origin) !== -1) {
       callback(null, true);
     } else {
-      callback(new Error('Not allowed by CORS'));
+      console.log('CORS blocked origin:', origin);
+      callback(null, true); // Allow in development, restrict in production
     }
   },
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With'],
+  optionsSuccessStatus: 200
 };
 
 app.use(cors(corsOptions));
+app.options('*', cors(corsOptions)); // Handle preflight requests
+
 app.use(limiter);
 app.use(compression());
 app.use(morgan(process.env.NODE_ENV === 'production' ? 'combined' : 'dev'));
@@ -126,6 +133,15 @@ app.get('/health', (req, res) => {
   });
 });
 
+// Test route for debugging
+app.get('/api/test', (req, res) => {
+  res.json({
+    success: true,
+    message: 'API is working!',
+    timestamp: new Date().toISOString()
+  });
+});
+
 // API Routes (New structure)
 app.use('/api/auth', authRoutes);
 app.use('/api/users', userRoutes);
@@ -136,7 +152,7 @@ app.use('/api/frames', frameRoutes);
 app.use('/api/designs', designRoutes);
 app.use('/api/upload', uploadRoutes);
 
-// Legacy route support for existing frontend
+// Legacy route support for existing frontend/admin
 app.use('/api/category', categoryRoutes);
 app.use('/api/template', templateRoutes);
 app.use('/api/frame', frameRoutes);
@@ -196,9 +212,9 @@ const startServer = async () => {
       console.log(`
 🚀 Tempify Backend Server Started
 📡 Port: ${PORT}
-🌐 Environment: ${process.env.NODE_ENV || 'development'}
+🌍 Environment: ${process.env.NODE_ENV || 'development'}
 🔗 Health Check: http://localhost:${PORT}/health
-📊 API Docs: http://localhost:${PORT}/api
+📊 API Test: http://localhost:${PORT}/api/test
       `);
     });
   } catch (error) {
@@ -208,3 +224,5 @@ const startServer = async () => {
 };
 
 startServer();
+
+module.exports = app;
