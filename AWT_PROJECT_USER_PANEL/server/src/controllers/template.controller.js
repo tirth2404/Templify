@@ -1,5 +1,12 @@
+// src/controllers/template.controller.js
 const Template = require('../models/Template');
 const Category = require('../models/Category');
+const { 
+  uploadToCloudinary, 
+  deleteFromCloudinary, 
+  getThumbnailUrl,
+  isCloudinaryConfigured 
+} = require('../config/cloudinary');
 const fs = require('fs');
 const path = require('path');
 
@@ -46,13 +53,24 @@ const getTemplates = async (req, res) => {
 
     const total = await Template.countDocuments(query);
 
+    // Add optimized URLs to templates
+    const templatesWithUrls = templates.map(template => ({
+      ...template.toObject(),
+      imageUrl: template.cloudinaryPublicId ? 
+        template.imageUrl : 
+        `${req.protocol}://${req.get('host')}/Template_images/${template.imagePath}`,
+      thumbnailUrl: template.cloudinaryPublicId ?
+        getThumbnailUrl(template.cloudinaryPublicId) :
+        `${req.protocol}://${req.get('host')}/Template_images/${template.imagePath}`
+    }));
+
     res.json({
       success: true,
-      count: templates.length,
+      count: templatesWithUrls.length,
       total,
       currentPage: parseInt(page),
       totalPages: Math.ceil(total / limit),
-      templates
+      templates: templatesWithUrls
     });
   } catch (error) {
     res.status(500).json({
@@ -86,16 +104,60 @@ const createTemplate = async (req, res) => {
       });
     }
 
-    // Get file info
-    const stats = fs.statSync(req.file.path);
+    let cloudinaryResult = null;
+    let imagePath = req.file.filename;
+    let fileSize = req.file.size;
+
+    // Upload to Cloudinary if configured
+    if (isCloudinaryConfigured()) {
+      try {
+        cloudinaryResult = await uploadToCloudinary(
+          req.file.path, 
+          'tempify/templates',
+          {
+            transformation: [
+              { quality: 'auto' },
+              { fetch_format: 'auto' }
+            ]
+          }
+        );
+        
+        // Update template data with Cloudinary info
+        imagePath = cloudinaryResult.secure_url;
+        fileSize = cloudinaryResult.bytes;
+      } catch (uploadError) {
+        console.error('Cloudinary upload failed:', uploadError);
+        // Continue with local storage if Cloudinary fails
+        if (fs.existsSync(req.file.path)) {
+          fs.unlinkSync(req.file.path);
+        }
+        return res.status(500).json({
+          success: false,
+          message: 'Image upload failed',
+          error: uploadError.message
+        });
+      }
+    } else {
+      // Move file to proper directory if Cloudinary not configured
+      const targetDir = path.join(__dirname, '../../public/Template_images');
+      const targetPath = path.join(targetDir, req.file.filename);
+      
+      if (!fs.existsSync(targetDir)) {
+        fs.mkdirSync(targetDir, { recursive: true });
+      }
+      
+      fs.renameSync(req.file.path, targetPath);
+    }
     
     const template = new Template({
       name,
       categoryId,
       description,
       tags: tags ? tags.split(',').map(tag => tag.trim()) : [],
-      imagePath: req.file.filename,
-      fileSize: stats.size,
+      imagePath: cloudinaryResult ? cloudinaryResult.public_id : req.file.filename,
+      cloudinaryPublicId: cloudinaryResult ? cloudinaryResult.public_id : null,
+      cloudinaryUrl: cloudinaryResult ? cloudinaryResult.secure_url : null,
+      fileSize,
       fileFormat: path.extname(req.file.originalname).slice(1).toLowerCase(),
       dimensions: dimensions || { width: 800, height: 600 },
       isPremium: isPremium === 'true',
@@ -109,9 +171,18 @@ const createTemplate = async (req, res) => {
     res.status(201).json({
       success: true,
       message: 'Template created successfully',
-      data: template
+      data: {
+        ...template.toObject(),
+        imageUrl: template.imageUrl,
+        thumbnailUrl: template.thumbnailUrl
+      }
     });
   } catch (error) {
+    // Clean up file if creation fails
+    if (req.file && fs.existsSync(req.file.path)) {
+      fs.unlinkSync(req.file.path);
+    }
+    
     res.status(500).json({
       success: false,
       message: 'Error creating template',
@@ -148,7 +219,11 @@ const getTemplateById = async (req, res) => {
 
     res.json({
       success: true,
-      data: template
+      data: {
+        ...template.toObject(),
+        imageUrl: template.imageUrl,
+        thumbnailUrl: template.thumbnailUrl
+      }
     });
   } catch (error) {
     res.status(500).json({
@@ -164,35 +239,8 @@ const getTemplateById = async (req, res) => {
 // @access  Private (Admin)
 const updateTemplate = async (req, res) => {
   try {
-    const updateData = { ...req.body };
+    const template = await Template.findById(req.params.id);
     
-    if (req.body.tags && typeof req.body.tags === 'string') {
-      updateData.tags = req.body.tags.split(',').map(tag => tag.trim());
-    }
-
-    if (req.file) {
-      // Delete old file
-      const existingTemplate = await Template.findById(req.params.id);
-      if (existingTemplate && existingTemplate.imagePath) {
-        const oldFilePath = path.join(__dirname, '../../public/Template_images', existingTemplate.imagePath);
-        if (fs.existsSync(oldFilePath)) {
-          fs.unlinkSync(oldFilePath);
-        }
-      }
-
-      // Update with new file info
-      const stats = fs.statSync(req.file.path);
-      updateData.imagePath = req.file.filename;
-      updateData.fileSize = stats.size;
-      updateData.fileFormat = path.extname(req.file.originalname).slice(1).toLowerCase();
-    }
-
-    const template = await Template.findByIdAndUpdate(
-      req.params.id,
-      updateData,
-      { new: true, runValidators: true }
-    ).populate('categoryId', 'name');
-
     if (!template) {
       return res.status(404).json({
         success: false,
@@ -200,12 +248,91 @@ const updateTemplate = async (req, res) => {
       });
     }
 
+    const updateData = { ...req.body };
+    
+    if (req.body.tags && typeof req.body.tags === 'string') {
+      updateData.tags = req.body.tags.split(',').map(tag => tag.trim());
+    }
+
+    // Handle new image upload
+    if (req.file) {
+      let cloudinaryResult = null;
+
+      // Delete old image from Cloudinary if exists
+      if (template.cloudinaryPublicId) {
+        try {
+          await deleteFromCloudinary(template.cloudinaryPublicId);
+        } catch (deleteError) {
+          console.error('Failed to delete old image from Cloudinary:', deleteError);
+        }
+      } else if (template.imagePath) {
+        // Delete old local file
+        const oldFilePath = path.join(__dirname, '../../public/Template_images', template.imagePath);
+        if (fs.existsSync(oldFilePath)) {
+          fs.unlinkSync(oldFilePath);
+        }
+      }
+
+      // Upload new image
+      if (isCloudinaryConfigured()) {
+        try {
+          cloudinaryResult = await uploadToCloudinary(
+            req.file.path, 
+            'tempify/templates'
+          );
+          
+          updateData.imagePath = cloudinaryResult.public_id;
+          updateData.cloudinaryPublicId = cloudinaryResult.public_id;
+          updateData.cloudinaryUrl = cloudinaryResult.secure_url;
+          updateData.fileSize = cloudinaryResult.bytes;
+        } catch (uploadError) {
+          console.error('Cloudinary upload failed:', uploadError);
+          return res.status(500).json({
+            success: false,
+            message: 'Image upload failed',
+            error: uploadError.message
+          });
+        }
+      } else {
+        // Move to local directory
+        const targetDir = path.join(__dirname, '../../public/Template_images');
+        const targetPath = path.join(targetDir, req.file.filename);
+        
+        if (!fs.existsSync(targetDir)) {
+          fs.mkdirSync(targetDir, { recursive: true });
+        }
+        
+        fs.renameSync(req.file.path, targetPath);
+        updateData.imagePath = req.file.filename;
+        updateData.cloudinaryPublicId = null;
+        updateData.cloudinaryUrl = null;
+        updateData.fileSize = req.file.size;
+      }
+      
+      updateData.fileFormat = path.extname(req.file.originalname).slice(1).toLowerCase();
+    }
+
+    const updatedTemplate = await Template.findByIdAndUpdate(
+      req.params.id,
+      updateData,
+      { new: true, runValidators: true }
+    ).populate('categoryId', 'name');
+
     res.json({
       success: true,
       message: 'Template updated successfully',
-      data: template
+      data: {
+        ...updatedTemplate.toObject(),
+        imageUrl: updatedTemplate.imageUrl,
+        thumbnailUrl: updatedTemplate.thumbnailUrl
+      }
     });
   } catch (error) {
+    // Clean up uploaded file if update fails
+    if (req.file && fs.existsSync(req.file.path)) {
+      fs.unlinkSync(req.file.path);
+    }
+    
     res.status(500).json({
       success: false,
       message: 'Error updating template',
@@ -219,7 +346,7 @@ const updateTemplate = async (req, res) => {
 // @access  Private (Admin)
 const deleteTemplate = async (req, res) => {
   try {
-    const template = await Template.findByIdAndDelete(req.params.id);
+    const template = await Template.findById(req.params.id);
 
     if (!template) {
       return res.status(404).json({
@@ -228,13 +355,21 @@ const deleteTemplate = async (req, res) => {
       });
     }
 
-    // Delete associated file
-    if (template.imagePath) {
+    // Delete image from Cloudinary or local storage
+    if (template.cloudinaryPublicId) {
+      try {
+        await deleteFromCloudinary(template.cloudinaryPublicId);
+      } catch (deleteError) {
+        console.error('Failed to delete image from Cloudinary:', deleteError);
+      }
+    } else if (template.imagePath) {
       const filePath = path.join(__dirname, '../../public/Template_images', template.imagePath);
       if (fs.existsSync(filePath)) {
         fs.unlinkSync(filePath);
       }
     }
+
+    await Template.findByIdAndDelete(req.params.id);
 
     res.json({
       success: true,

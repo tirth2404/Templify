@@ -1,15 +1,22 @@
+// src/controllers/frame.controller.js
 const Frame = require('../models/Frame');
 const FrameElement = require('../models/FrameElement');
+const {
+  uploadToCloudinary,
+  deleteFromCloudinary,
+  getThumbnailUrl,
+  isCloudinaryConfigured
+} = require('../config/cloudinary');
 const fs = require('fs');
 const path = require('path');
 
-// @desc    Get all frames
-// @route   GET /api/frames
-// @access  Public
+/* ===========================================================
+   GET ALL FRAMES
+   =========================================================== */
 const getFrames = async (req, res) => {
   try {
     const { page = 1, limit = 12, search } = req.query;
-    
+
     const query = { isActive: true };
     if (search) {
       query.name = { $regex: search, $options: 'i' };
@@ -22,13 +29,24 @@ const getFrames = async (req, res) => {
 
     const total = await Frame.countDocuments(query);
 
+    // Add optimized URLs to frames
+    const framesWithUrls = frames.map(frame => ({
+      ...frame.toObject(),
+      imageUrl: frame.cloudinaryPublicId
+        ? frame.cloudinaryUrl
+        : `${req.protocol}://${req.get('host')}/Frame_images/${frame.imagePath}`,
+      thumbnailUrl: frame.cloudinaryPublicId
+        ? getThumbnailUrl(frame.cloudinaryPublicId)
+        : `${req.protocol}://${req.get('host')}/Frame_images/${frame.imagePath}`
+    }));
+
     res.json({
       success: true,
-      count: frames.length,
+      count: framesWithUrls.length,
       total,
       currentPage: parseInt(page),
       totalPages: Math.ceil(total / limit),
-      frames
+      frames: framesWithUrls
     });
   } catch (error) {
     res.status(500).json({
@@ -39,27 +57,52 @@ const getFrames = async (req, res) => {
   }
 };
 
-// @desc    Create frame
-// @route   POST /api/frames
-// @access  Private (Admin)
+/* ===========================================================
+   CREATE FRAME
+   =========================================================== */
 const createFrame = async (req, res) => {
   try {
     if (!req.file) {
-      return res.status(400).json({
-        success: false,
-        message: 'Frame image is required'
-      });
+      return res.status(400).json({ success: false, message: 'Frame image is required' });
     }
 
     const { name, dimensions } = req.body;
-    
-    // Get file info
-    const stats = fs.statSync(req.file.path);
-    
+
+    let cloudinaryResult = null;
+    let fileSize = req.file.size;
+
+    // Upload to Cloudinary if configured
+    if (isCloudinaryConfigured()) {
+      try {
+        cloudinaryResult = await uploadToCloudinary(
+          req.file.path,
+          'tempify/frames',
+          { transformation: [{ quality: 'auto' }, { fetch_format: 'auto' }] }
+        );
+        fileSize = cloudinaryResult.bytes;
+      } catch (uploadError) {
+        console.error('Cloudinary upload failed:', uploadError);
+        if (fs.existsSync(req.file.path)) fs.unlinkSync(req.file.path);
+        return res.status(500).json({
+          success: false,
+          message: 'Image upload failed',
+          error: uploadError.message
+        });
+      }
+    } else {
+      // Move file locally
+      const targetDir = path.join(__dirname, '../../public/Frame_images');
+      const targetPath = path.join(targetDir, req.file.filename);
+      if (!fs.existsSync(targetDir)) fs.mkdirSync(targetDir, { recursive: true });
+      fs.renameSync(req.file.path, targetPath);
+    }
+
     const frame = new Frame({
       name: name || `Frame ${Date.now()}`,
-      imagePath: req.file.filename,
-      fileSize: stats.size,
+      imagePath: cloudinaryResult ? cloudinaryResult.public_id : req.file.filename,
+      cloudinaryPublicId: cloudinaryResult ? cloudinaryResult.public_id : null,
+      cloudinaryUrl: cloudinaryResult ? cloudinaryResult.secure_url : null,
+      fileSize,
       fileFormat: path.extname(req.file.originalname).slice(1).toLowerCase(),
       dimensions: dimensions || { width: 800, height: 600 },
       createdBy: req.user._id
@@ -70,39 +113,61 @@ const createFrame = async (req, res) => {
     res.status(201).json({
       success: true,
       message: 'Frame created successfully',
-      data: frame
+      data: {
+        ...frame.toObject(),
+        imageUrl: frame.cloudinaryUrl || `${req.protocol}://${req.get('host')}/Frame_images/${frame.imagePath}`,
+        thumbnailUrl: frame.cloudinaryPublicId
+          ? getThumbnailUrl(frame.cloudinaryPublicId)
+          : `${req.protocol}://${req.get('host')}/Frame_images/${frame.imagePath}`
+      }
     });
   } catch (error) {
-    res.status(500).json({
-      success: false,
-      message: 'Error creating frame',
-      error: error.message
-    });
+    if (req.file && fs.existsSync(req.file.path)) fs.unlinkSync(req.file.path);
+    res.status(500).json({ success: false, message: 'Error creating frame', error: error.message });
   }
 };
 
-// @desc    Create frame with elements
-// @route   POST /api/frames/with-elements
-// @access  Private (Admin)
+/* ===========================================================
+   CREATE FRAME WITH ELEMENTS
+   =========================================================== */
 const createFrameWithElements = async (req, res) => {
   try {
     if (!req.file) {
-      return res.status(400).json({
-        success: false,
-        message: 'Frame image is required'
-      });
+      return res.status(400).json({ success: false, message: 'Frame image is required' });
     }
 
     const { name, dimensions, elements, x, y, font_size, color } = req.body;
-    
-    // Get file info
-    const stats = fs.statSync(req.file.path);
-    
-    // Create frame
+
+    let cloudinaryResult = null;
+    let fileSize = req.file.size;
+
+    if (isCloudinaryConfigured()) {
+      try {
+        cloudinaryResult = await uploadToCloudinary(req.file.path, 'tempify/frames');
+        fileSize = cloudinaryResult.bytes;
+      } catch (uploadError) {
+        console.error('Cloudinary upload failed:', uploadError);
+        if (fs.existsSync(req.file.path)) fs.unlinkSync(req.file.path);
+        return res.status(500).json({
+          success: false,
+          message: 'Image upload failed',
+          error: uploadError.message
+        });
+      }
+    } else {
+      // Move file locally
+      const targetDir = path.join(__dirname, '../../public/Frame_images');
+      const targetPath = path.join(targetDir, req.file.filename);
+      if (!fs.existsSync(targetDir)) fs.mkdirSync(targetDir, { recursive: true });
+      fs.renameSync(req.file.path, targetPath);
+    }
+
     const frame = new Frame({
       name: name || `Frame ${Date.now()}`,
-      imagePath: req.file.filename,
-      fileSize: stats.size,
+      imagePath: cloudinaryResult ? cloudinaryResult.public_id : req.file.filename,
+      cloudinaryPublicId: cloudinaryResult ? cloudinaryResult.public_id : null,
+      cloudinaryUrl: cloudinaryResult ? cloudinaryResult.secure_url : null,
+      fileSize,
       fileFormat: path.extname(req.file.originalname).slice(1).toLowerCase(),
       dimensions: dimensions || { width: 800, height: 600 },
       createdBy: req.user._id
@@ -110,7 +175,8 @@ const createFrameWithElements = async (req, res) => {
 
     await frame.save();
 
-    // Create frame elements if provided
+    // Elements
+    let frameElements = [];
     if (elements) {
       const elementsArray = Array.isArray(elements) ? elements : [elements];
       const xArray = Array.isArray(x) ? x : [x];
@@ -118,7 +184,6 @@ const createFrameWithElements = async (req, res) => {
       const fontSizeArray = Array.isArray(font_size) ? font_size : [font_size];
       const colorArray = Array.isArray(color) ? color : [color];
 
-      const frameElements = [];
       for (let i = 0; i < elementsArray.length; i++) {
         if (elementsArray[i] && xArray[i] !== undefined && yArray[i] !== undefined) {
           const element = new FrameElement({
@@ -138,188 +203,164 @@ const createFrameWithElements = async (req, res) => {
           frameElements.push(element);
         }
       }
-
-      res.status(201).json({
-        success: true,
-        message: 'Frame and elements created successfully',
-        data: {
-          frame,
-          elements: frameElements
-        }
-      });
-    } else {
-      res.status(201).json({
-        success: true,
-        message: 'Frame created successfully',
-        data: { frame }
-      });
     }
-  } catch (error) {
-    res.status(500).json({
-      success: false,
-      message: 'Error creating frame with elements',
-      error: error.message
+
+    res.status(201).json({
+      success: true,
+      message: 'Frame and elements created successfully',
+      data: {
+        frame: {
+          ...frame.toObject(),
+          imageUrl: frame.cloudinaryUrl || `${req.protocol}://${req.get('host')}/Frame_images/${frame.imagePath}`,
+          thumbnailUrl: frame.cloudinaryPublicId
+            ? getThumbnailUrl(frame.cloudinaryPublicId)
+            : `${req.protocol}://${req.get('host')}/Frame_images/${frame.imagePath}`
+        },
+        elements: frameElements
+      }
     });
+  } catch (error) {
+    if (req.file && fs.existsSync(req.file.path)) fs.unlinkSync(req.file.path);
+    res.status(500).json({ success: false, message: 'Error creating frame with elements', error: error.message });
   }
 };
 
-// @desc    Get frame by ID with elements
-// @route   GET /api/frames/:id
-// @access  Public
+/* ===========================================================
+   GET FRAME BY ID WITH ELEMENTS
+   =========================================================== */
 const getFrameById = async (req, res) => {
   try {
     const frame = await Frame.findById(req.params.id);
-    
-    if (!frame) {
-      return res.status(404).json({
-        success: false,
-        message: 'Frame not found'
-      });
-    }
+    if (!frame) return res.status(404).json({ success: false, message: 'Frame not found' });
 
-    const elements = await FrameElement.find({ 
-      frameId: req.params.id, 
-      isActive: true 
-    });
+    const elements = await FrameElement.find({ frameId: req.params.id, isActive: true });
 
     res.json({
       success: true,
       data: {
-        frame,
+        frame: {
+          ...frame.toObject(),
+          imageUrl: frame.cloudinaryUrl || `${req.protocol}://${req.get('host')}/Frame_images/${frame.imagePath}`,
+          thumbnailUrl: frame.cloudinaryPublicId
+            ? getThumbnailUrl(frame.cloudinaryPublicId)
+            : `${req.protocol}://${req.get('host')}/Frame_images/${frame.imagePath}`
+        },
         elements
       }
     });
   } catch (error) {
-    res.status(500).json({
-      success: false,
-      message: 'Error fetching frame',
-      error: error.message
-    });
+    res.status(500).json({ success: false, message: 'Error fetching frame', error: error.message });
   }
 };
 
-// @desc    Get all frames with elements
-// @route   GET /api/frames/all-with-elements
-// @access  Public
+/* ===========================================================
+   GET ALL FRAMES WITH ELEMENTS
+   =========================================================== */
 const getFramesWithElements = async (req, res) => {
   try {
-    const frames = await Frame.find({ isActive: true })
-      .sort({ createdAt: -1 });
+    const frames = await Frame.find({ isActive: true }).sort({ createdAt: -1 });
 
     const framesWithElements = [];
-    
     for (const frame of frames) {
-      const elements = await FrameElement.find({ 
-        frameId: frame._id, 
-        isActive: true 
-      });
-      
+      const elements = await FrameElement.find({ frameId: frame._id, isActive: true });
       framesWithElements.push({
-        frame,
+        frame: {
+          ...frame.toObject(),
+          imageUrl: frame.cloudinaryUrl || `${req.protocol}://${req.get('host')}/Frame_images/${frame.imagePath}`,
+          thumbnailUrl: frame.cloudinaryPublicId
+            ? getThumbnailUrl(frame.cloudinaryPublicId)
+            : `${req.protocol}://${req.get('host')}/Frame_images/${frame.imagePath}`
+        },
         elements
       });
     }
 
-    res.json({
-      success: true,
-      count: framesWithElements.length,
-      data: framesWithElements
-    });
+    res.json({ success: true, count: framesWithElements.length, data: framesWithElements });
   } catch (error) {
-    res.status(500).json({
-      success: false,
-      message: 'Error fetching frames with elements',
-      error: error.message
-    });
+    res.status(500).json({ success: false, message: 'Error fetching frames with elements', error: error.message });
   }
 };
 
-// @desc    Update frame
-// @route   PUT /api/frames/:id
-// @access  Private (Admin)
+/* ===========================================================
+   UPDATE FRAME
+   =========================================================== */
 const updateFrame = async (req, res) => {
   try {
+    const frame = await Frame.findById(req.params.id);
+    if (!frame) return res.status(404).json({ success: false, message: 'Frame not found' });
+
     const updateData = { ...req.body };
-    
+
+    // If new file uploaded
     if (req.file) {
-      // Delete old file
-      const existingFrame = await Frame.findById(req.params.id);
-      if (existingFrame && existingFrame.imagePath) {
-        const oldFilePath = path.join(__dirname, '../../public/Frame_images', existingFrame.imagePath);
-        if (fs.existsSync(oldFilePath)) {
-          fs.unlinkSync(oldFilePath);
-        }
+      // Delete old Cloudinary image or local file
+      if (frame.cloudinaryPublicId && isCloudinaryConfigured()) {
+        await deleteFromCloudinary(frame.cloudinaryPublicId);
+      } else if (frame.imagePath) {
+        const oldPath = path.join(__dirname, '../../public/Frame_images', frame.imagePath);
+        if (fs.existsSync(oldPath)) fs.unlinkSync(oldPath);
       }
 
-      // Update with new file info
-      const stats = fs.statSync(req.file.path);
-      updateData.imagePath = req.file.filename;
-      updateData.fileSize = stats.size;
+      // Upload new
+      let cloudinaryResult = null;
+      if (isCloudinaryConfigured()) {
+        cloudinaryResult = await uploadToCloudinary(req.file.path, 'tempify/frames');
+        updateData.imagePath = cloudinaryResult.public_id;
+        updateData.cloudinaryPublicId = cloudinaryResult.public_id;
+        updateData.cloudinaryUrl = cloudinaryResult.secure_url;
+        updateData.fileSize = cloudinaryResult.bytes;
+      } else {
+        const targetDir = path.join(__dirname, '../../public/Frame_images');
+        const targetPath = path.join(targetDir, req.file.filename);
+        if (!fs.existsSync(targetDir)) fs.mkdirSync(targetDir, { recursive: true });
+        fs.renameSync(req.file.path, targetPath);
+        updateData.imagePath = req.file.filename;
+        updateData.fileSize = req.file.size;
+        updateData.cloudinaryPublicId = null;
+        updateData.cloudinaryUrl = null;
+      }
       updateData.fileFormat = path.extname(req.file.originalname).slice(1).toLowerCase();
     }
 
-    const frame = await Frame.findByIdAndUpdate(
-      req.params.id,
-      updateData,
-      { new: true, runValidators: true }
-    );
-
-    if (!frame) {
-      return res.status(404).json({
-        success: false,
-        message: 'Frame not found'
-      });
-    }
+    const updatedFrame = await Frame.findByIdAndUpdate(req.params.id, updateData, {
+      new: true,
+      runValidators: true
+    });
 
     res.json({
       success: true,
       message: 'Frame updated successfully',
-      data: frame
+      data: updatedFrame
     });
   } catch (error) {
-    res.status(500).json({
-      success: false,
-      message: 'Error updating frame',
-      error: error.message
-    });
+    if (req.file && fs.existsSync(req.file.path)) fs.unlinkSync(req.file.path);
+    res.status(500).json({ success: false, message: 'Error updating frame', error: error.message });
   }
 };
 
-// @desc    Delete frame
-// @route   DELETE /api/frames/:id
-// @access  Private (Admin)
+/* ===========================================================
+   DELETE FRAME
+   =========================================================== */
 const deleteFrame = async (req, res) => {
   try {
-    const frame = await Frame.findByIdAndDelete(req.params.id);
+    const frame = await Frame.findById(req.params.id);
+    if (!frame) return res.status(404).json({ success: false, message: 'Frame not found' });
 
-    if (!frame) {
-      return res.status(404).json({
-        success: false,
-        message: 'Frame not found'
-      });
-    }
-
-    // Delete associated file
-    if (frame.imagePath) {
+    // Delete Cloudinary or local file
+    if (frame.cloudinaryPublicId && isCloudinaryConfigured()) {
+      await deleteFromCloudinary(frame.cloudinaryPublicId);
+    } else if (frame.imagePath) {
       const filePath = path.join(__dirname, '../../public/Frame_images', frame.imagePath);
-      if (fs.existsSync(filePath)) {
-        fs.unlinkSync(filePath);
-      }
+      if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
     }
 
-    // Delete associated frame elements
+    // Delete frame + elements
+    await Frame.findByIdAndDelete(req.params.id);
     await FrameElement.deleteMany({ frameId: req.params.id });
 
-    res.json({
-      success: true,
-      message: 'Frame and associated elements deleted successfully'
-    });
+    res.json({ success: true, message: 'Frame and associated elements deleted successfully' });
   } catch (error) {
-    res.status(500).json({
-      success: false,
-      message: 'Error deleting frame',
-      error: error.message
-    });
+    res.status(500).json({ success: false, message: 'Error deleting frame', error: error.message });
   }
 };
 
@@ -332,5 +373,3 @@ module.exports = {
   updateFrame,
   deleteFrame
 };
-
-// =====================================================
