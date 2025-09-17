@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useReducer, useEffect } from 'react';
-import { apiRequest } from '../lib/api';
+import { categoriesApi, templatesApi, apiRequest } from '../lib/api';
 
 const TemplateContext = createContext();
 
@@ -42,45 +42,12 @@ const templateReducer = (state, action) => {
   }
 };
 
-const initialTemplates = [
-  {
-    id: 1,
-    name: 'Festival Greeting',
-    category: 'Festival',
-    thumbnail: 'https://images.pexels.com/photos/1708988/pexels-photo-1708988.jpeg?auto=compress&cs=tinysrgb&w=300',
-    trending: true,
-    latest: false
-  },
-  {
-    id: 2,
-    name: 'Daily Quote',
-    category: 'Daily Quotes',
-    thumbnail: 'https://images.pexels.com/photos/1029141/pexels-photo-1029141.jpeg?auto=compress&cs=tinysrgb&w=300',
-    trending: false,
-    latest: true
-  },
-  {
-    id: 3,
-    name: 'Business Promotion',
-    category: 'Business Promotions',
-    thumbnail: 'https://images.pexels.com/photos/590022/pexels-photo-590022.jpg?auto=compress&cs=tinysrgb&w=300',
-    trending: true,
-    latest: true
-  },
-  {
-    id: 4,
-    name: 'Devotional Message',
-    category: 'Devotional',
-    thumbnail: 'https://images.pexels.com/photos/7292599/pexels-photo-7292599.jpeg?auto=compress&cs=tinysrgb&w=300',
-    trending: false,
-    latest: false
-  }
-];
+const initialTemplates = [];
 
 export const TemplateProvider = ({ children }) => {
   const [state, dispatch] = useReducer(templateReducer, {
     templates: initialTemplates,
-    categories: ['All', 'Festival', 'Daily Quotes', 'Business Promotions', 'Devotional'],
+    categories: ['All'],
     filters: {
       category: 'All',
       search: '',
@@ -94,16 +61,27 @@ export const TemplateProvider = ({ children }) => {
     (async () => {
       try {
         const [catsRes, tmplRes] = await Promise.all([
-          apiRequest('/category/all'),
-          apiRequest('/template/all')
+          categoriesApi.getCategories({ limit: 100 }),
+          templatesApi.getTemplates({ limit: 48, sort: '-createdAt' })
         ]);
-        const cats = ['All', ...catsRes.categories.map(c => c.name)];
-        const tmpls = tmplRes.templates.map((t) => ({
-          id: t._id,
-          name: t.name,
-          category: t.category_id?.name || 'General',
-          thumbnail: `${window.location.origin.replace(/:\\d+$/, '')}/Template_images/${t.path}`
-        }));
+
+        const cats = ['All', ...(catsRes.categories || []).map(c => c.name)];
+
+        const now = Date.now();
+        const fourteenDaysMs = 14 * 24 * 60 * 60 * 1000;
+        const tmpls = (tmplRes.templates || []).map((t) => {
+          const createdAt = t.createdAt ? new Date(t.createdAt).getTime() : now;
+          const isLatest = now - createdAt <= fourteenDaysMs;
+          return {
+            id: t._id,
+            name: t.name,
+            category: t.categoryId?.name || t.category_id?.name || 'General',
+            thumbnail: t.imageUrl || t.cloudinaryUrl || (t.imagePath ? `/Template_images/${t.imagePath}` : ''),
+            trending: !!t.isFeatured,
+            latest: isLatest
+          };
+        });
+
         dispatch({ type: 'SET_CATEGORIES', payload: cats });
         dispatch({ type: 'SET_TEMPLATES', payload: tmpls });
       } catch (e) {
@@ -118,7 +96,7 @@ export const TemplateProvider = ({ children }) => {
 
   const saveDesign = async (design) => {
     const token = localStorage.getItem('token');
-  const res = await apiRequest('/saved-designs', { method: 'POST', body: design, token });
+    const res = await apiRequest('/saved-designs', { method: 'POST', body: design, token });
     const saved = { ...res.design, id: res.design._id, createdAt: res.design.createdAt };
     dispatch({ type: 'SAVE_DESIGN', payload: saved });
   };
@@ -129,7 +107,7 @@ export const TemplateProvider = ({ children }) => {
 
   const deleteDesign = async (designId) => {
     const token = localStorage.getItem('token');
-  await apiRequest(`/saved-designs/${designId}`, { method: 'DELETE', token });
+    await apiRequest(`/saved-designs/${designId}`, { method: 'DELETE', token });
     dispatch({ type: 'DELETE_DESIGN', payload: designId });
   };
 
@@ -139,11 +117,9 @@ export const TemplateProvider = ({ children }) => {
       const token = localStorage.getItem('token');
       if (!token) return;
       try {
-  const res = await apiRequest('/saved-designs', { token });
+        const res = await apiRequest('/saved-designs', { token });
         const list = res.designs.map(d => ({ ...d, id: d._id }));
-        // populate without a reducer action? reuse SET_TEMPLATES? Create specific action
         dispatch({ type: 'SET_FILTERS', payload: {} });
-        // Direct state mutation not allowed; instead re-dispatch via SAVE_DESIGN
         list.forEach(d => dispatch({ type: 'SAVE_DESIGN', payload: d }));
       } catch {}
     })();

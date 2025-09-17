@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { useParams, useLocation, useNavigate } from 'react-router-dom';
 import { useTemplate } from '../contexts/TemplateContext';
 import { 
@@ -58,17 +58,93 @@ const CustomizePage = () => {
   });
 
   const [selectedElement, setSelectedElement] = useState(null);
+  const [draggingId, setDraggingId] = useState(null);
+  const [dragOffset, setDragOffset] = useState({ x: 0, y: 0 });
+  const [history, setHistory] = useState([]);
+  const [historyIndex, setHistoryIndex] = useState(-1);
   const [activeTab, setActiveTab] = useState('text');
   const [logo, setLogo] = useState(null);
 
-  const handleElementChange = (elementId, property, value) => {
-    setDesign(prev => ({
-      ...prev,
-      elements: prev.elements.map(element =>
-        element.id === elementId ? { ...element, [property]: value } : element
-      )
-    }));
+  const pushHistory = (next) => {
+    setHistory(prev => {
+      const trimmed = prev.slice(0, historyIndex + 1);
+      return [...trimmed, next];
+    });
+    setHistoryIndex(idx => idx + 1);
   };
+
+  useEffect(() => {
+    // seed initial state once
+    pushHistory({ ...design });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const handleElementChange = (elementId, property, value) => {
+    setDesign(prev => {
+      const updatedElements = prev.elements.map(element =>
+        element.id === elementId ? { ...element, [property]: value } : element
+      );
+      const next = { ...prev, elements: updatedElements };
+      // keep selectedElement in sync
+      if (selectedElement && selectedElement.id === elementId) {
+        const updated = updatedElements.find(e => e.id === elementId);
+        setSelectedElement(updated);
+      }
+      pushHistory(next);
+      return next;
+    });
+  };
+
+  const getCanvasCoords = (clientX, clientY) => {
+    const rect = canvasRef.current.getBoundingClientRect();
+    return {
+      x: clientX - rect.left,
+      y: clientY - rect.top
+    };
+  };
+
+  const handleElementMouseDown = (e, element) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setSelectedElement(element);
+    const { x, y } = getCanvasCoords(e.clientX, e.clientY);
+    setDraggingId(element.id);
+    setDragOffset({ x: x - element.x, y: y - element.y });
+  };
+
+  const handleCanvasMouseMove = (e) => {
+    if (!draggingId) return;
+    const { x, y } = getCanvasCoords(e.clientX, e.clientY);
+    const newX = Math.max(0, x - dragOffset.x);
+    const newY = Math.max(0, y - dragOffset.y);
+    handleElementChange(draggingId, 'x', newX);
+    handleElementChange(draggingId, 'y', newY);
+  };
+
+  useEffect(() => {
+    const handleMouseUp = () => setDraggingId(null);
+    window.addEventListener('mouseup', handleMouseUp);
+    const handleKeyDown = (e) => {
+      const tag = (e.target && e.target.tagName) || '';
+      if ((e.key === 'Delete' || e.key === 'Backspace') && selectedElement && tag !== 'INPUT' && tag !== 'TEXTAREA') {
+        e.preventDefault();
+        handleDeleteSelected();
+      }
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z') {
+        e.preventDefault();
+        handleUndo();
+      }
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'y') {
+        e.preventDefault();
+        handleRedo();
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => {
+      window.removeEventListener('mouseup', handleMouseUp);
+      window.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [selectedElement, historyIndex, history]);
 
   const addTextElement = () => {
     const newElement = {
@@ -82,10 +158,11 @@ const CustomizePage = () => {
       color: '#000000',
       fontWeight: 'normal'
     };
-    setDesign(prev => ({
-      ...prev,
-      elements: [...prev.elements, newElement]
-    }));
+    setDesign(prev => {
+      const next = { ...prev, elements: [...prev.elements, newElement] };
+      pushHistory(next);
+      return next;
+    });
   };
 
   const handleLogoUpload = (e) => {
@@ -103,18 +180,101 @@ const CustomizePage = () => {
           width: 100,
           height: 100
         };
-        setDesign(prev => ({
-          ...prev,
-          elements: [...prev.elements, logoElement]
-        }));
+        setDesign(prev => {
+          const next = { ...prev, elements: [...prev.elements, logoElement] };
+          pushHistory(next);
+          return next;
+        });
       };
       reader.readAsDataURL(file);
     }
   };
 
-  const downloadDesign = (format) => {
-    // Mock download functionality
-    alert(`Downloading design as ${format.toUpperCase()}...`);
+  const downloadDesign = async (format) => {
+    const canvasEl = canvasRef.current;
+    if (!canvasEl) return;
+    const width = canvasEl.clientWidth || 800;
+    const height = canvasEl.clientHeight || 600;
+    const off = document.createElement('canvas');
+    off.width = width;
+    off.height = height;
+    const ctx = off.getContext('2d');
+
+    // background color
+    ctx.fillStyle = design.backgroundColor || '#ffffff';
+    ctx.fillRect(0, 0, width, height);
+
+    const drawImg = (src, dx, dy, dw, dh) => new Promise((resolve) => {
+      const img = new Image();
+      img.crossOrigin = 'anonymous';
+      img.onload = () => {
+        if (dw && dh) ctx.drawImage(img, dx, dy, dw, dh); else ctx.drawImage(img, dx, dy);
+        resolve();
+      };
+      img.onerror = () => resolve();
+      img.src = src;
+    });
+
+    if (design.backgroundImage) {
+      await drawImg(design.backgroundImage, 0, 0, width, height);
+    }
+
+    for (const el of design.elements) {
+      if (el.type === 'text') {
+        ctx.fillStyle = el.color || '#000';
+        const weight = el.fontWeight || 'normal';
+        const size = el.fontSize || 16;
+        const family = el.fontFamily || 'Inter, Arial, sans-serif';
+        ctx.font = `${weight} ${size}px ${family}`;
+        ctx.textBaseline = 'top';
+        ctx.fillText(el.content || '', el.x || 0, el.y || 0);
+      } else if (el.type === 'image' && el.src) {
+        const dw = el.width || 100;
+        const dh = el.height || 100;
+        await drawImg(el.src, el.x || 0, el.y || 0, dw, dh);
+      }
+    }
+
+    const mime = format === 'jpg' ? 'image/jpeg' : 'image/png';
+    const url = off.toDataURL(mime, 0.92);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `${template.name || 'design'}.${format}`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+  };
+
+  const handleUndo = () => {
+    if (historyIndex <= 0) return;
+    const idx = historyIndex - 1;
+    setHistoryIndex(idx);
+    const prevDesign = history[idx];
+    setDesign(prevDesign);
+    if (selectedElement) {
+      setSelectedElement(prevDesign.elements.find(e => e.id === selectedElement.id) || null);
+    }
+  };
+
+  const handleRedo = () => {
+    if (historyIndex >= history.length - 1) return;
+    const idx = historyIndex + 1;
+    setHistoryIndex(idx);
+    const nextDesign = history[idx];
+    setDesign(nextDesign);
+    if (selectedElement) {
+      setSelectedElement(nextDesign.elements.find(e => e.id === selectedElement.id) || null);
+    }
+  };
+
+  const handleDeleteSelected = () => {
+    if (!selectedElement) return;
+    setDesign(prev => {
+      const next = { ...prev, elements: prev.elements.filter(e => e.id !== selectedElement.id) };
+      pushHistory(next);
+      return next;
+    });
+    setSelectedElement(null);
   };
 
   const saveCurrentDesign = () => {
@@ -245,10 +405,11 @@ const CustomizePage = () => {
                       color: '#666666',
                       fontWeight: 'normal'
                     };
-                    setDesign(prev => ({
-                      ...prev,
-                      elements: [...prev.elements, phoneElement]
-                    }));
+                    setDesign(prev => {
+                      const next = { ...prev, elements: [...prev.elements, phoneElement] };
+                      pushHistory(next);
+                      return next;
+                    });
                   }}
                   className="w-full flex items-center space-x-2 p-2 text-left hover:bg-gray-50 rounded-lg transition-colors"
                 >
@@ -269,10 +430,11 @@ const CustomizePage = () => {
                       color: '#666666',
                       fontWeight: 'normal'
                     };
-                    setDesign(prev => ({
-                      ...prev,
-                      elements: [...prev.elements, emailElement]
-                    }));
+                    setDesign(prev => {
+                      const next = { ...prev, elements: [...prev.elements, emailElement] };
+                      pushHistory(next);
+                      return next;
+                    });
                   }}
                   className="w-full flex items-center space-x-2 p-2 text-left hover:bg-gray-50 rounded-lg transition-colors"
                 >
@@ -293,10 +455,11 @@ const CustomizePage = () => {
                       color: '#666666',
                       fontWeight: 'normal'
                     };
-                    setDesign(prev => ({
-                      ...prev,
-                      elements: [...prev.elements, websiteElement]
-                    }));
+                    setDesign(prev => {
+                      const next = { ...prev, elements: [...prev.elements, websiteElement] };
+                      pushHistory(next);
+                      return next;
+                    });
                   }}
                   className="w-full flex items-center space-x-2 p-2 text-left hover:bg-gray-50 rounded-lg transition-colors"
                 >
@@ -391,10 +554,10 @@ const CustomizePage = () => {
         {/* Toolbar */}
         <div className="bg-white border-b p-4 flex items-center justify-between">
           <div className="flex items-center space-x-4">
-            <button className="p-2 hover:bg-gray-100 rounded-lg transition-colors">
+            <button onClick={handleUndo} className="p-2 hover:bg-gray-100 rounded-lg transition-colors" title="Undo (Ctrl+Z)">
               <Undo size={20} />
             </button>
-            <button className="p-2 hover:bg-gray-100 rounded-lg transition-colors">
+            <button onClick={handleRedo} className="p-2 hover:bg-gray-100 rounded-lg transition-colors" title="Redo (Ctrl+Y)">
               <Redo size={20} />
             </button>
             <div className="h-6 w-px bg-gray-300"></div>
@@ -423,18 +586,7 @@ const CustomizePage = () => {
                   >
                     Download as JPG
                   </button>
-                  <button
-                    onClick={() => downloadDesign('png')}
-                    className="w-full text-left px-3 py-2 hover:bg-gray-100 rounded-md text-sm"
-                  >
-                    Download as PNG
-                  </button>
-                  <button
-                    onClick={() => downloadDesign('pdf')}
-                    className="w-full text-left px-3 py-2 hover:bg-gray-100 rounded-md text-sm"
-                  >
-                    Download as PDF
-                  </button>
+                  <button onClick={() => downloadDesign('png')} className="w-full text-left px-3 py-2 hover:bg-gray-100 rounded-md text-sm">Download as PDF (PNG)</button>
                 </div>
               </div>
             </div>
@@ -446,13 +598,14 @@ const CustomizePage = () => {
           <div className="max-w-4xl mx-auto">
             <div
               ref={canvasRef}
-              className="relative w-full h-96 border-2 border-dashed border-gray-300 rounded-lg overflow-hidden"
+              className="relative w-full h-96 border-2 border-dashed border-gray-300 rounded-lg overflow-hidden select-none"
               style={{
                 backgroundColor: design.backgroundColor,
                 backgroundImage: design.backgroundImage ? `url(${design.backgroundImage})` : 'none',
                 backgroundSize: 'cover',
                 backgroundPosition: 'center'
               }}
+              onMouseMove={handleCanvasMouseMove}
             >
               {design.elements.map((element) => (
                 <div
@@ -472,15 +625,7 @@ const CustomizePage = () => {
                     width: element.width,
                     height: element.height
                   }}
-                  onClick={() => setSelectedElement(element)}
-                  draggable
-                  onDragEnd={(e) => {
-                    const rect = canvasRef.current.getBoundingClientRect();
-                    const x = e.clientX - rect.left;
-                    const y = e.clientY - rect.top;
-                    handleElementChange(element.id, 'x', Math.max(0, x));
-                    handleElementChange(element.id, 'y', Math.max(0, y));
-                  }}
+                  onMouseDown={(e) => handleElementMouseDown(e, element)}
                 >
                   {element.type === 'text' ? (
                     <div className="whitespace-pre-wrap">{element.content}</div>
@@ -504,6 +649,11 @@ const CustomizePage = () => {
             <div className="mt-4 text-center text-sm text-gray-600">
               Click on elements to select and edit them. Drag to reposition.
             </div>
+            {selectedElement && (
+              <div className="mt-4 flex justify-end">
+                <button onClick={handleDeleteSelected} className="px-3 py-2 text-sm bg-red-600 text-white rounded-lg hover:bg-red-700">Delete Selected</button>
+              </div>
+            )}
           </div>
         </div>
       </div>
