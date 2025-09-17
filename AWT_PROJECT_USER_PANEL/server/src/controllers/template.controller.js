@@ -5,6 +5,7 @@ const {
   uploadToCloudinary, 
   deleteFromCloudinary, 
   getThumbnailUrl,
+  getOptimizedImageUrl,
   isCloudinaryConfigured 
 } = require('../config/cloudinary');
 const fs = require('fs');
@@ -53,16 +54,19 @@ const getTemplates = async (req, res) => {
 
     const total = await Template.countDocuments(query);
 
-    // Add optimized URLs to templates
-    const templatesWithUrls = templates.map(template => ({
-      ...template.toObject(),
-      imageUrl: template.cloudinaryPublicId ? 
-        template.imageUrl : 
-        `${req.protocol}://${req.get('host')}/Template_images/${template.imagePath}`,
-      thumbnailUrl: template.cloudinaryPublicId ?
-        getThumbnailUrl(template.cloudinaryPublicId) :
-        `${req.protocol}://${req.get('host')}/Template_images/${template.imagePath}`
-    }));
+    // Add optimized URLs to templates (handle legacy records where imagePath stores Cloudinary public_id)
+    const templatesWithUrls = templates.map(template => {
+      const obj = template.toObject();
+      const isCloudPublicId = !template.cloudinaryPublicId && typeof template.imagePath === 'string' && template.imagePath.includes('/');
+      const cloudPublicId = template.cloudinaryPublicId || (isCloudPublicId ? template.imagePath : null);
+      const imageUrl = cloudPublicId
+        ? (template.cloudinaryUrl || getOptimizedImageUrl(cloudPublicId))
+        : `${req.protocol}://${req.get('host')}/Template_images/${template.imagePath}`;
+      const thumbnailUrl = cloudPublicId
+        ? getThumbnailUrl(cloudPublicId)
+        : `${req.protocol}://${req.get('host')}/Template_images/${template.imagePath}`;
+      return { ...obj, imageUrl, thumbnailUrl };
+    });
 
     res.json({
       success: true,

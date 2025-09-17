@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useReducer, useEffect } from 'react';
-import { categoriesApi, templatesApi, apiRequest } from '../lib/api';
+import { categoriesApi, templatesApi, apiRequest, getApiBaseUrl } from '../lib/api';
 
 const TemplateContext = createContext();
 
@@ -76,7 +76,7 @@ export const TemplateProvider = ({ children }) => {
             id: t._id,
             name: t.name,
             category: t.categoryId?.name || t.category_id?.name || 'General',
-            thumbnail: t.imageUrl || t.cloudinaryUrl || (t.imagePath ? `/Template_images/${t.imagePath}` : ''),
+            thumbnail: t.imageUrl || t.cloudinaryUrl || (t.imagePath ? `${getApiBaseUrl()}/Template_images/${t.imagePath}` : ''),
             trending: !!t.isFeatured,
             latest: isLatest
           };
@@ -96,8 +96,47 @@ export const TemplateProvider = ({ children }) => {
 
   const saveDesign = async (design) => {
     const token = localStorage.getItem('token');
-    const res = await apiRequest('/saved-designs', { method: 'POST', body: design, token });
-    const saved = { ...res.design, id: res.design._id, createdAt: res.design.createdAt };
+    // Normalize to API schema
+    const payload = {
+      name: design.name,
+      templateId: String(design.templateId || design.template_id || ''),
+      canvas: {
+        backgroundImage: design.backgroundImage || design.canvas?.backgroundImage || '',
+        backgroundColor: design.backgroundColor || design.canvas?.backgroundColor || '#ffffff',
+        dimensions: {
+          width: design.canvas?.dimensions?.width || 800,
+          height: design.canvas?.dimensions?.height || 600
+        }
+      },
+      elements: (design.elements || []).map(el => ({
+        type: el.type,
+        content: el.content,
+        src: el.src,
+        position: { x: el.x || 0, y: el.y || 0, z: el.z || 0 },
+        dimensions: { width: el.width || 100, height: el.height || 50 },
+        styling: {
+          fontSize: el.fontSize || 16,
+          fontFamily: el.fontFamily || 'Inter',
+          fontWeight: el.fontWeight || 'normal',
+          color: el.color || '#000000',
+          backgroundColor: el.backgroundColor || 'transparent',
+          borderRadius: el.borderRadius || 0,
+          opacity: typeof el.opacity === 'number' ? el.opacity : 1,
+          rotation: el.rotation || 0
+        }
+      }))
+    };
+
+    // Add a basic thumbnail using backgroundImage so it appears in the grid
+    payload.thumbnailPath = payload.canvas.backgroundImage || '';
+
+    const res = await apiRequest('/saved-designs', { method: 'POST', body: payload, token });
+    const saved = { 
+      ...res.design, 
+      id: res.design._id, 
+      createdAt: res.design.createdAt,
+      thumbnail: res.design.thumbnailPath || payload.thumbnailPath || ''
+    };
     dispatch({ type: 'SAVE_DESIGN', payload: saved });
   };
 
@@ -118,7 +157,11 @@ export const TemplateProvider = ({ children }) => {
       if (!token) return;
       try {
         const res = await apiRequest('/saved-designs', { token });
-        const list = res.designs.map(d => ({ ...d, id: d._id }));
+        const list = res.designs.map(d => ({ 
+          ...d, 
+          id: d._id,
+          thumbnail: d.thumbnailPath || d.canvas?.backgroundImage || ''
+        }));
         dispatch({ type: 'SET_FILTERS', payload: {} });
         list.forEach(d => dispatch({ type: 'SAVE_DESIGN', payload: d }));
       } catch {}

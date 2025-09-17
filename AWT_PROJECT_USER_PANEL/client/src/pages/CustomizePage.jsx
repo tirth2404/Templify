@@ -1,6 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { useParams, useLocation, useNavigate } from 'react-router-dom';
 import { useTemplate } from '../contexts/TemplateContext';
+import { templatesApi } from '../lib/api';
 import { 
   Type, 
   Palette, 
@@ -25,7 +26,7 @@ const CustomizePage = () => {
   const template = location.state?.template || {
     id: templateId,
     name: 'Custom Template',
-    thumbnail: 'https://images.pexels.com/photos/1029141/pexels-photo-1029141.jpeg?auto=compress&cs=tinysrgb&w=800'
+    thumbnail: ''
   };
 
   const [design, setDesign] = useState({
@@ -64,6 +65,7 @@ const CustomizePage = () => {
   const [historyIndex, setHistoryIndex] = useState(-1);
   const [activeTab, setActiveTab] = useState('text');
   const [logo, setLogo] = useState(null);
+  const [loadingTemplate, setLoadingTemplate] = useState(!location.state?.template);
 
   const pushHistory = (next) => {
     setHistory(prev => {
@@ -189,6 +191,20 @@ const CustomizePage = () => {
       reader.readAsDataURL(file);
     }
   };
+
+  // If opened directly, fetch template by ID and set as background
+  useEffect(() => {
+    (async () => {
+      if (location.state?.template || !templateId) return;
+      try {
+        const res = await templatesApi.getTemplateById(templateId);
+        const t = res.data || res;
+        const bg = t.imageUrl || t.cloudinaryUrl || (t.imagePath ? `/Template_images/${t.imagePath}` : '');
+        setDesign(prev => ({ ...prev, backgroundImage: bg }));
+      } catch (e) {}
+      setLoadingTemplate(false);
+    })();
+  }, [templateId]);
 
   const downloadDesign = async (format) => {
     const canvasEl = canvasRef.current;
