@@ -22,8 +22,8 @@ const designRoutes = require('./routes/design.routes');
 const uploadRoutes = require('./routes/upload.routes');
 
 // Import middleware
-const { errorHandler } = require('./middleware/error.middleware');
-const { notFound } = require('./middleware/notFound.middleware');
+const { errorHandler } = require('./middlewares/error.middleware');
+const { notFound } = require('./middlewares/notFound.middleware');
 
 const app = express();
 
@@ -33,7 +33,7 @@ app.set('trust proxy', 1);
 // Rate limiting
 const limiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
-  max: process.env.NODE_ENV === 'production' ? 100 : 1000, // limit each IP to 100 requests per windowMs
+  max: process.env.NODE_ENV === 'production' ? 100 : 1000,
   message: {
     success: false,
     message: 'Too many requests from this IP, please try again later.'
@@ -65,10 +65,7 @@ const corsOptions = {
       process.env.ADMIN_URL
     ].filter(Boolean);
     
-    // Allow requests with no origin (mobile apps, Postman, etc.)
-    if (!origin) return callback(null, true);
-    
-    if (allowedOrigins.indexOf(origin) !== -1) {
+    if (!origin || allowedOrigins.indexOf(origin) !== -1) {
       callback(null, true);
     } else {
       callback(new Error('Not allowed by CORS'));
@@ -87,10 +84,36 @@ app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 app.use(cookieParser());
 
-// Serve static files
-app.use('/uploads', express.static(path.join(__dirname, '../uploads')));
-app.use('/Template_images', express.static(path.join(__dirname, '../public/Template_images')));
-app.use('/Frame_images', express.static(path.join(__dirname, '../public/Frame_images')));
+// Create upload directories
+const createUploadDirs = () => {
+  const dirs = [
+    path.join(__dirname, '../uploads/temp'),
+    path.join(__dirname, '../public/Template_images'),
+    path.join(__dirname, '../public/Frame_images')
+  ];
+  
+  const fs = require('fs');
+  dirs.forEach(dir => {
+    if (!fs.existsSync(dir)) {
+      fs.mkdirSync(dir, { recursive: true });
+    }
+  });
+};
+createUploadDirs();
+
+// Serve static files with proper headers
+app.use('/uploads', express.static(path.join(__dirname, '../uploads'), {
+  maxAge: '1d',
+  etag: true
+}));
+app.use('/Template_images', express.static(path.join(__dirname, '../public/Template_images'), {
+  maxAge: '7d',
+  etag: true
+}));
+app.use('/Frame_images', express.static(path.join(__dirname, '../public/Frame_images'), {
+  maxAge: '7d',
+  etag: true
+}));
 
 // Health check
 app.get('/health', (req, res) => {
@@ -103,7 +126,7 @@ app.get('/health', (req, res) => {
   });
 });
 
-// API Routes
+// API Routes (New structure)
 app.use('/api/auth', authRoutes);
 app.use('/api/users', userRoutes);
 app.use('/api/admin', adminRoutes);
@@ -118,6 +141,13 @@ app.use('/api/category', categoryRoutes);
 app.use('/api/template', templateRoutes);
 app.use('/api/frame', frameRoutes);
 app.use('/api/saved-designs', designRoutes);
+
+// Admin panel routes (for legacy admin)
+app.use('/api/add-master-category', (req, res, next) => {
+  req.url = '/masters';
+  req.method = 'POST';
+  categoryRoutes(req, res, next);
+});
 
 // Error handling middleware
 app.use(notFound);
@@ -135,7 +165,6 @@ const connectDB = async () => {
 
     console.log(`MongoDB connected: ${mongoose.connection.host}`);
     
-    // Handle connection events
     mongoose.connection.on('error', (err) => {
       console.error('MongoDB connection error:', err);
     });
@@ -167,7 +196,7 @@ const startServer = async () => {
       console.log(`
 🚀 Tempify Backend Server Started
 📡 Port: ${PORT}
-🌍 Environment: ${process.env.NODE_ENV || 'development'}
+🌐 Environment: ${process.env.NODE_ENV || 'development'}
 🔗 Health Check: http://localhost:${PORT}/health
 📊 API Docs: http://localhost:${PORT}/api
       `);

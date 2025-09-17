@@ -1,129 +1,559 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
-  <title>Admin Panel - Add Templates & Frames</title>
-  <link rel="stylesheet" href="admin.css">
-  <style>
-    .form-section { margin-bottom: 15px; }
-    .small-btn { padding: 5px 10px; font-size: 14px; }
-    .style-fields { display: inline-block; margin-left: 10px; }
-    .element-block { border: 1px solid #ccc; padding: 10px; margin-bottom: 10px; }
-  </style>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Tempify Admin Panel</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        .notification { transition: all 0.3s ease; }
+    </style>
 </head>
-<body>  
-  <div class="container">
-    <h1>Admin Panel</h1>
-
-   
-    <!-- Add Master Category -->
-    <fieldset>
-        <legend>Add Master Category</legend>
-        <form id="masterCategoryForm">
-        <div class="form-section">
-            <label for="master_category">Master Category:</label>
-            <input type="text" id="master_category" name="master_category" placeholder="Enter master category" required>
-            <button type="submit" class="small-btn">Add</button>
-        </div>
-        </form>
-  </fieldset>
-  
-
-    <!-- Add Category -->
-    <fieldset>
-      <legend>Add Category</legend>
-      <form id="CategoryForm">
-        <div class="form-section">
-          <label for="master_id">Master Category:</label>
-          <select id="master_id" name="master_id" required>
-            <option value="">Select master category</option>
-          </select>
-          <input type="text" name="category" placeholder="Enter category name" required>
-          <button type="submit" class="small-btn">Add</button>
-        </div>
-      </form>
-    </fieldset>
-
-    <!-- Add Template to Category -->
-    <fieldset>
-      <legend>Add Template</legend>
-      <form id="templateForm" enctype="multipart/form-data">
-        <div class="form-section">
-          <label for="template_category">Category:</label>
-          <select id="template_category" name="category" required>
-            <option value="">Select category</option>
-          </select>
-          <input type="file" name="templateImage" accept="image/*" required>
-          <button type="submit" class="small-btn">Upload</button>
-        </div>
-      </form>
-    </fieldset>
-
-    <!-- Add Frame with Metadata -->
-    <fieldset>
-      <legend>Add Frame with Metadata</legend>
-      <form id="frameForm" enctype="multipart/form-data">
-        <div class="form-section">
-          <label for="frameImage">Frame Image:</label>
-          <input type="file" id="frameImage" name="frameImage" accept="image/*" required>
+<body class="bg-gray-50">
+    <div id="notification" class="fixed top-4 right-4 z-50 hidden"></div>
+    
+    <div class="min-h-screen flex">
+        <!-- Sidebar -->
+        <div class="w-64 bg-white shadow-lg">
+            <div class="p-6">
+                <h1 class="text-2xl font-bold text-gray-800">Tempify Admin</h1>
+            </div>
+            <nav class="mt-6">
+                <a href="#dashboard" class="nav-link active" data-section="dashboard">
+                    <span>📊</span> Dashboard
+                </a>
+                <a href="#categories" class="nav-link" data-section="categories">
+                    <span>📂</span> Categories
+                </a>
+                <a href="#templates" class="nav-link" data-section="templates">
+                    <span>🎨</span> Templates
+                </a>
+                <a href="#frames" class="nav-link" data-section="frames">
+                    <span>🖼️</span> Frames
+                </a>
+                <a href="#users" class="nav-link" data-section="users">
+                    <span>👥</span> Users
+                </a>
+            </nav>
         </div>
 
-        <div id="elementsContainer"></div>
+        <!-- Main Content -->
+        <div class="flex-1 p-8">
+            <!-- Dashboard Section -->
+            <div id="dashboard-section" class="section">
+                <h2 class="text-3xl font-bold mb-6">Dashboard</h2>
+                <div class="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
+                    <div class="bg-white p-6 rounded-lg shadow">
+                        <h3 class="text-lg font-semibold text-gray-600">Total Users</h3>
+                        <p id="total-users" class="text-3xl font-bold text-blue-600">-</p>
+                    </div>
+                    <div class="bg-white p-6 rounded-lg shadow">
+                        <h3 class="text-lg font-semibold text-gray-600">Templates</h3>
+                        <p id="total-templates" class="text-3xl font-bold text-green-600">-</p>
+                    </div>
+                    <div class="bg-white p-6 rounded-lg shadow">
+                        <h3 class="text-lg font-semibold text-gray-600">Designs</h3>
+                        <p id="total-designs" class="text-3xl font-bold text-purple-600">-</p>
+                    </div>
+                    <div class="bg-white p-6 rounded-lg shadow">
+                        <h3 class="text-lg font-semibold text-gray-600">Categories</h3>
+                        <p id="total-categories" class="text-3xl font-bold text-orange-600">-</p>
+                    </div>
+                </div>
+            </div>
 
-        <div class="form-section">
-          <button type="button" class="small-btn" onclick="addElementBlock()">Add Element Position</button>
+            <!-- Categories Section -->
+            <div id="categories-section" class="section hidden">
+                <h2 class="text-3xl font-bold mb-6">Categories Management</h2>
+                
+                <!-- Master Categories -->
+                <div class="bg-white p-6 rounded-lg shadow mb-6">
+                    <h3 class="text-xl font-semibold mb-4">Add Master Category</h3>
+                    <form id="master-category-form" class="flex gap-4">
+                        <input 
+                            type="text" 
+                            id="master-category-name" 
+                            placeholder="Master category name" 
+                            class="flex-1 px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
+                            required
+                        >
+                        <button type="submit" class="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700">
+                            Add Master Category
+                        </button>
+                    </form>
+                </div>
+
+                <!-- Categories -->
+                <div class="bg-white p-6 rounded-lg shadow mb-6">
+                    <h3 class="text-xl font-semibold mb-4">Add Category</h3>
+                    <form id="category-form" class="flex gap-4">
+                        <select id="master-category-select" class="px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500" required>
+                            <option value="">Select master category</option>
+                        </select>
+                        <input 
+                            type="text" 
+                            id="category-name" 
+                            placeholder="Category name" 
+                            class="flex-1 px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
+                            required
+                        >
+                        <button type="submit" class="px-6 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700">
+                            Add Category
+                        </button>
+                    </form>
+                </div>
+
+                <!-- Categories List -->
+                <div class="bg-white p-6 rounded-lg shadow">
+                    <h3 class="text-xl font-semibold mb-4">Categories List</h3>
+                    <div id="categories-list" class="space-y-2"></div>
+                </div>
+            </div>
+
+            <!-- Templates Section -->
+            <div id="templates-section" class="section hidden">
+                <h2 class="text-3xl font-bold mb-6">Templates Management</h2>
+                
+                <div class="bg-white p-6 rounded-lg shadow mb-6">
+                    <h3 class="text-xl font-semibold mb-4">Upload Template</h3>
+                    <form id="template-form" class="space-y-4">
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <input 
+                                type="text" 
+                                id="template-name" 
+                                placeholder="Template name" 
+                                class="px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
+                                required
+                            >
+                            <select id="template-category" class="px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500" required>
+                                <option value="">Select category</option>
+                            </select>
+                        </div>
+                        <textarea 
+                            id="template-description" 
+                            placeholder="Template description" 
+                            rows="3"
+                            class="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
+                        ></textarea>
+                        <input 
+                            type="file" 
+                            id="template-file" 
+                            accept="image/*" 
+                            class="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
+                            required
+                        >
+                        <div class="flex gap-4">
+                            <label class="flex items-center">
+                                <input type="checkbox" id="template-featured" class="mr-2">
+                                Featured
+                            </label>
+                            <label class="flex items-center">
+                                <input type="checkbox" id="template-premium" class="mr-2">
+                                Premium
+                            </label>
+                        </div>
+                        <button type="submit" class="w-full px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700">
+                            Upload Template
+                        </button>
+                    </form>
+                </div>
+
+                <div class="bg-white p-6 rounded-lg shadow">
+                    <h3 class="text-xl font-semibold mb-4">Templates List</h3>
+                    <div id="templates-list" class="grid grid-cols-1 md:grid-cols-3 gap-4"></div>
+                </div>
+            </div>
+
+            <!-- Frames Section -->
+            <div id="frames-section" class="section hidden">
+                <h2 class="text-3xl font-bold mb-6">Frames Management</h2>
+                
+                <div class="bg-white p-6 rounded-lg shadow mb-6">
+                    <h3 class="text-xl font-semibold mb-4">Upload Frame with Elements</h3>
+                    <form id="frame-form" class="space-y-4">
+                        <input 
+                            type="text" 
+                            id="frame-name" 
+                            placeholder="Frame name" 
+                            class="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
+                        >
+                        <input 
+                            type="file" 
+                            id="frame-file" 
+                            accept="image/*" 
+                            class="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
+                            required
+                        >
+                        
+                        <div id="frame-elements" class="space-y-4">
+                            <h4 class="font-semibold">Frame Elements</h4>
+                        </div>
+                        
+                        <button type="button" onclick="addFrameElement()" class="px-4 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700">
+                            Add Element
+                        </button>
+                        
+                        <button type="submit" class="w-full px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700">
+                            Upload Frame
+                        </button>
+                    </form>
+                </div>
+            </div>
+
+            <!-- Users Section -->
+            <div id="users-section" class="section hidden">
+                <h2 class="text-3xl font-bold mb-6">Users Management</h2>
+                <div class="bg-white p-6 rounded-lg shadow">
+                    <div id="users-list" class="space-y-4"></div>
+                </div>
+            </div>
         </div>
+    </div>
 
-        <div class="form-section">
-          <button type="submit" class="small-btn">Add Frame</button>
-        </div>
-      </form>
-    </fieldset>
-  </div>
+    <script>
+        const API_BASE = 'http://localhost:3000/api';
+        let authToken = null;
 
-  <script>
-    const availableElements = [
-      'name', 'email', 'facebook', 'linkedin',
-      'twitter', 'instagram', 'mobile', 'address', 'logo'
-    ];
+        // Utility functions
+        function showNotification(message, type = 'success') {
+            const notification = document.getElementById('notification');
+            notification.className = `fixed top-4 right-4 z-50 p-4 rounded-lg shadow-lg ${
+                type === 'success' ? 'bg-green-500' : 'bg-red-500'
+            } text-white`;
+            notification.textContent = message;
+            notification.classList.remove('hidden');
+            setTimeout(() => notification.classList.add('hidden'), 3000);
+        }
 
-    function addElementBlock() {
-      const container = document.getElementById('elementsContainer');
+        async function apiCall(endpoint, options = {}) {
+            try {
+                const response = await fetch(`${API_BASE}${endpoint}`, {
+                    headers: {
+                        'Content-Type': 'application/json',
+                        ...(authToken && { 'Authorization': `Bearer ${authToken}` }),
+                        ...options.headers
+                    },
+                    ...options
+                });
+                
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}`);
+                }
+                
+                return await response.json();
+            } catch (error) {
+                console.error('API Error:', error);
+                showNotification(`Error: ${error.message}`, 'error');
+                throw error;
+            }
+        }
 
-      const block = document.createElement('div');
-      block.classList.add('element-block');
+        // Navigation
+        document.querySelectorAll('.nav-link').forEach(link => {
+            link.addEventListener('click', (e) => {
+                e.preventDefault();
+                const section = link.dataset.section;
+                showSection(section);
+                
+                // Update active link
+                document.querySelectorAll('.nav-link').forEach(l => l.classList.remove('active'));
+                link.classList.add('active');
+            });
+        });
 
-      block.innerHTML = `
-        <label>Element:</label>
-        <select name="elements[]" required onchange="toggleFields(this)">
-          <option value="">Select</option>
-          ${availableElements.map(el => `<option value="${el}">${el}</option>`).join('')}
-        </select><br><br>
+        function showSection(sectionName) {
+            document.querySelectorAll('.section').forEach(section => {
+                section.classList.add('hidden');
+            });
+            document.getElementById(`${sectionName}-section`).classList.remove('hidden');
+            
+            // Load section data
+            switch(sectionName) {
+                case 'dashboard':
+                    loadDashboard();
+                    break;
+                case 'categories':
+                    loadCategories();
+                    break;
+                case 'templates':
+                    loadTemplates();
+                    break;
+                case 'frames':
+                    loadFrames();
+                    break;
+                case 'users':
+                    loadUsers();
+                    break;
+            }
+        }
 
-        <label>X:</label>
-        <input type="number" name="x[]" required>
-        <label>Y:</label>
-        <input type="number" name="y[]" required>
+        // Dashboard
+        async function loadDashboard() {
+            try {
+                const stats = await apiCall('/admin/stats');
+                document.getElementById('total-users').textContent = stats.data.stats.totalUsers;
+                document.getElementById('total-templates').textContent = stats.data.stats.totalTemplates;
+                document.getElementById('total-designs').textContent = stats.data.stats.totalDesigns;
+                document.getElementById('total-categories').textContent = '0'; // Add this to stats
+            } catch (error) {
+                console.error('Failed to load dashboard:', error);
+            }
+        }
 
-        <span class="style-fields">
-          <label>Font Size:</label>
-          <input type="number" name="font_size[]">
-          <label>Color:</label>
-          <input type="color" name="color[]" value="#000000">
-        </span>
-        <br>
-      `;
+        // Categories
+        async function loadCategories() {
+            await loadMasterCategories();
+            await loadCategoriesList();
+        }
 
-      container.appendChild(block);
-    }
+        async function loadMasterCategories() {
+            try {
+                const response = await apiCall('/categories/masters');
+                const select = document.getElementById('master-category-select');
+                select.innerHTML = '<option value="">Select master category</option>';
+                
+                response.data.forEach(master => {
+                    const option = document.createElement('option');
+                    option.value = master._id;
+                    option.textContent = master.name;
+                    select.appendChild(option);
+                });
+            } catch (error) {
+                console.error('Failed to load master categories:', error);
+            }
+        }
 
-    function toggleFields(select) {
-      const styleFields = select.parentElement.querySelector('.style-fields');
-      styleFields.style.display = (select.value === 'logo') ? 'none' : 'inline-block';
-    }
+        async function loadCategoriesList() {
+            try {
+                const response = await apiCall('/categories');
+                const container = document.getElementById('categories-list');
+                container.innerHTML = '';
+                
+                response.categories.forEach(category => {
+                    const div = document.createElement('div');
+                    div.className = 'flex justify-between items-center p-3 border rounded-lg';
+                    div.innerHTML = `
+                        <span>${category.name} (${category.masterId?.name || 'Unknown'})</span>
+                        <button onclick="deleteCategory('${category._id}')" class="px-3 py-1 bg-red-600 text-white rounded hover:bg-red-700">
+                            Delete
+                        </button>
+                    `;
+                    container.appendChild(div);
+                });
+            } catch (error) {
+                console.error('Failed to load categories:', error);
+            }
+        }
 
-    window.onload = () => addElementBlock();
-  </script>
-   <script src="admin.js"></script>
+        // Form handlers
+        document.getElementById('master-category-form').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const name = document.getElementById('master-category-name').value;
+            
+            try {
+                await apiCall('/categories/masters', {
+                    method: 'POST',
+                    body: JSON.stringify({ name })
+                });
+                
+                showNotification('Master category added successfully!');
+                document.getElementById('master-category-name').value = '';
+                await loadMasterCategories();
+            } catch (error) {
+                console.error('Failed to add master category:', error);
+            }
+        });
+
+        document.getElementById('category-form').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const masterId = document.getElementById('master-category-select').value;
+            const name = document.getElementById('category-name').value;
+            
+            try {
+                await apiCall('/categories', {
+                    method: 'POST',
+                    body: JSON.stringify({ name, masterId })
+                });
+                
+                showNotification('Category added successfully!');
+                document.getElementById('category-name').value = '';
+                await loadCategoriesList();
+            } catch (error) {
+                console.error('Failed to add category:', error);
+            }
+        });
+
+        // Templates
+        async function loadTemplates() {
+            // Load categories for template form
+            try {
+                const response = await apiCall('/categories');
+                const select = document.getElementById('template-category');
+                select.innerHTML = '<option value="">Select category</option>';
+                
+                response.categories.forEach(category => {
+                    const option = document.createElement('option');
+                    option.value = category._id;
+                    option.textContent = category.name;
+                    select.appendChild(option);
+                });
+            } catch (error) {
+                console.error('Failed to load categories for templates:', error);
+            }
+        }
+
+        document.getElementById('template-form').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const formData = new FormData();
+            
+            formData.append('name', document.getElementById('template-name').value);
+            formData.append('categoryId', document.getElementById('template-category').value);
+            formData.append('description', document.getElementById('template-description').value);
+            formData.append('templateImage', document.getElementById('template-file').files[0]);
+            formData.append('isFeatured', document.getElementById('template-featured').checked);
+            formData.append('isPremium', document.getElementById('template-premium').checked);
+            
+            try {
+                await fetch(`${API_BASE}/templates`, {
+                    method: 'POST',
+                    headers: {
+                        ...(authToken && { 'Authorization': `Bearer ${authToken}` })
+                    },
+                    body: formData
+                });
+                
+                showNotification('Template uploaded successfully!');
+                document.getElementById('template-form').reset();
+            } catch (error) {
+                console.error('Failed to upload template:', error);
+                showNotification('Failed to upload template', 'error');
+            }
+        });
+
+        // Frame elements
+        function addFrameElement() {
+            const container = document.getElementById('frame-elements');
+            const elementDiv = document.createElement('div');
+            elementDiv.className = 'p-4 border rounded-lg space-y-2';
+            
+            elementDiv.innerHTML = `
+                <select name="elements[]" class="w-full px-3 py-2 border rounded" required>
+                    <option value="">Select element type</option>
+                    <option value="name">Name</option>
+                    <option value="email">Email</option>
+                    <option value="mobile">Mobile</option>
+                    <option value="address">Address</option>
+                    <option value="website">Website</option>
+                    <option value="facebook">Facebook</option>
+                    <option value="instagram">Instagram</option>
+                    <option value="twitter">Twitter</option>
+                    <option value="linkedin">LinkedIn</option>
+                    <option value="logo">Logo</option>
+                </select>
+                <div class="grid grid-cols-2 gap-2">
+                    <input type="number" name="x[]" placeholder="X Position" class="px-3 py-2 border rounded" required>
+                    <input type="number" name="y[]" placeholder="Y Position" class="px-3 py-2 border rounded" required>
+                </div>
+                <div class="grid grid-cols-2 gap-2">
+                    <input type="number" name="font_size[]" placeholder="Font Size" class="px-3 py-2 border rounded">
+                    <input type="color" name="color[]" value="#000000" class="px-3 py-2 border rounded">
+                </div>
+                <button type="button" onclick="this.parentElement.remove()" class="px-3 py-1 bg-red-500 text-white rounded">Remove</button>
+            `;
+            
+            container.appendChild(elementDiv);
+        }
+
+        // Initialize frame elements
+        addFrameElement();
+
+        // Users
+        async function loadUsers() {
+            try {
+                const response = await apiCall('/admin/users');
+                const container = document.getElementById('users-list');
+                container.innerHTML = '';
+                
+                response.users.forEach(user => {
+                    const div = document.createElement('div');
+                    div.className = 'flex justify-between items-center p-4 border rounded-lg';
+                    div.innerHTML = `
+                        <div>
+                            <h4 class="font-semibold">${user.companyName}</h4>
+                            <p class="text-gray-600">${user.email}</p>
+                            <p class="text-sm text-gray-500">Role: ${user.role} | Status: ${user.isActive ? 'Active' : 'Inactive'}</p>
+                        </div>
+                        <div class="space-x-2">
+                            <button onclick="toggleUserStatus('${user._id}')" class="px-3 py-1 ${user.isActive ? 'bg-yellow-500 hover:bg-yellow-600' : 'bg-green-500 hover:bg-green-600'} text-white rounded">
+                                ${user.isActive ? 'Deactivate' : 'Activate'}
+                            </button>
+                            <button onclick="deleteUser('${user._id}')" class="px-3 py-1 bg-red-500 hover:bg-red-600 text-white rounded">
+                                Delete
+                            </button>
+                        </div>
+                    `;
+                    container.appendChild(div);
+                });
+            } catch (error) {
+                console.error('Failed to load users:', error);
+            }
+        }
+
+        async function toggleUserStatus(userId) {
+            try {
+                await apiCall(`/admin/users/${userId}/toggle-status`, { method: 'PATCH' });
+                showNotification('User status updated!');
+                await loadUsers();
+            } catch (error) {
+                console.error('Failed to toggle user status:', error);
+            }
+        }
+
+        async function deleteUser(userId) {
+            if (confirm('Are you sure you want to delete this user?')) {
+                try {
+                    await apiCall(`/admin/users/${userId}`, { method: 'DELETE' });
+                    showNotification('User deleted!');
+                    await loadUsers();
+                } catch (error) {
+                    console.error('Failed to delete user:', error);
+                }
+            }
+        }
+
+        // Initialize admin panel
+        function init() {
+            // For demo purposes, assume admin is logged in
+            // In production, implement proper admin authentication
+            authToken = 'admin-token'; // This should come from proper login
+            loadDashboard();
+        }
+
+        // CSS for navigation
+        const style = document.createElement('style');
+        style.textContent = `
+            .nav-link {
+                display: block;
+                padding: 0.75rem 1.5rem;
+                color: #6B7280;
+                text-decoration: none;
+                border-left: 3px solid transparent;
+                transition: all 0.2s;
+            }
+            .nav-link:hover {
+                background-color: #F3F4F6;
+                color: #374151;
+            }
+            .nav-link.active {
+                background-color: #EFF6FF;
+                color: #2563EB;
+                border-left-color: #2563EB;
+            }
+        `;
+        document.head.appendChild(style);
+
+        // Initialize
+        init();
+    </script>
 </body>
 </html>
