@@ -1,0 +1,129 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Admin Panel - Add Templates & Frames</title>
+  <link rel="stylesheet" href="admin.css">
+  <style>
+    .form-section { margin-bottom: 15px; }
+    .small-btn { padding: 5px 10px; font-size: 14px; }
+    .style-fields { display: inline-block; margin-left: 10px; }
+    .element-block { border: 1px solid #ccc; padding: 10px; margin-bottom: 10px; }
+  </style>
+</head>
+<body>  
+  <div class="container">
+    <h1>Admin Panel</h1>
+
+   
+    <!-- Add Master Category -->
+    <fieldset>
+        <legend>Add Master Category</legend>
+        <form id="masterCategoryForm">
+        <div class="form-section">
+            <label for="master_category">Master Category:</label>
+            <input type="text" id="master_category" name="master_category" placeholder="Enter master category" required>
+            <button type="submit" class="small-btn">Add</button>
+        </div>
+        </form>
+  </fieldset>
+  
+
+    <!-- Add Category -->
+    <fieldset>
+      <legend>Add Category</legend>
+      <form id="CategoryForm">
+        <div class="form-section">
+          <label for="master_id">Master Category:</label>
+          <select id="master_id" name="master_id" required>
+            <option value="">Select master category</option>
+          </select>
+          <input type="text" name="category" placeholder="Enter category name" required>
+          <button type="submit" class="small-btn">Add</button>
+        </div>
+      </form>
+    </fieldset>
+
+    <!-- Add Template to Category -->
+    <fieldset>
+      <legend>Add Template</legend>
+      <form id="templateForm" enctype="multipart/form-data">
+        <div class="form-section">
+          <label for="template_category">Category:</label>
+          <select id="template_category" name="category" required>
+            <option value="">Select category</option>
+          </select>
+          <input type="file" name="templateImage" accept="image/*" required>
+          <button type="submit" class="small-btn">Upload</button>
+        </div>
+      </form>
+    </fieldset>
+
+    <!-- Add Frame with Metadata -->
+    <fieldset>
+      <legend>Add Frame with Metadata</legend>
+      <form id="frameForm" enctype="multipart/form-data">
+        <div class="form-section">
+          <label for="frameImage">Frame Image:</label>
+          <input type="file" id="frameImage" name="frameImage" accept="image/*" required>
+        </div>
+
+        <div id="elementsContainer"></div>
+
+        <div class="form-section">
+          <button type="button" class="small-btn" onclick="addElementBlock()">Add Element Position</button>
+        </div>
+
+        <div class="form-section">
+          <button type="submit" class="small-btn">Add Frame</button>
+        </div>
+      </form>
+    </fieldset>
+  </div>
+
+  <script>
+    const availableElements = [
+      'name', 'email', 'facebook', 'linkedin',
+      'twitter', 'instagram', 'mobile', 'address', 'logo'
+    ];
+
+    function addElementBlock() {
+      const container = document.getElementById('elementsContainer');
+
+      const block = document.createElement('div');
+      block.classList.add('element-block');
+
+      block.innerHTML = `
+        <label>Element:</label>
+        <select name="elements[]" required onchange="toggleFields(this)">
+          <option value="">Select</option>
+          ${availableElements.map(el => `<option value="${el}">${el}</option>`).join('')}
+        </select><br><br>
+
+        <label>X:</label>
+        <input type="number" name="x[]" required>
+        <label>Y:</label>
+        <input type="number" name="y[]" required>
+
+        <span class="style-fields">
+          <label>Font Size:</label>
+          <input type="number" name="font_size[]">
+          <label>Color:</label>
+          <input type="color" name="color[]" value="#000000">
+        </span>
+        <br>
+      `;
+
+      container.appendChild(block);
+    }
+
+    function toggleFields(select) {
+      const styleFields = select.parentElement.querySelector('.style-fields');
+      styleFields.style.display = (select.value === 'logo') ? 'none' : 'inline-block';
+    }
+
+    window.onload = () => addElementBlock();
+  </script>
+   <script src="admin.js"></script>
+</body>
+</html>
