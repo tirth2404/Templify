@@ -157,7 +157,7 @@ const SignupPage = () => {
     setIsLoading(true);
     
     try {
-      await apiRequest('/api/auth/signup', { method: 'POST', body: formData });
+  await apiRequest('/auth/signup', { method: 'POST', body: formData });
       alert('Account created successfully! Please login.');
       navigate('/login');
     } catch (error) {

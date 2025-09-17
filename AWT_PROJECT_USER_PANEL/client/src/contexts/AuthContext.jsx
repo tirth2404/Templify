@@ -53,7 +53,7 @@ export const AuthProvider = ({ children }) => {
   }, []);
 
   const login = async ({ email, password }) => {
-    const res = await apiRequest('/api/auth/login', { method: 'POST', body: { email, password } });
+  const res = await apiRequest('/auth/login', { method: 'POST', body: { email, password } });
     const { token, user } = res;
     localStorage.setItem('user', JSON.stringify(user));
     localStorage.setItem('token', token);
@@ -68,7 +68,7 @@ export const AuthProvider = ({ children }) => {
 
   const updateUser = async (userData) => {
     const token = localStorage.getItem('token');
-    const res = await apiRequest('/api/auth/me', { method: 'PUT', body: userData, token });
+  const res = await apiRequest('/auth/me', { method: 'PUT', body: userData, token });
     const updatedUser = {
       id: res.user._id || res.user.id,
       companyName: res.user.companyName,

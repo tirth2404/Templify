@@ -94,8 +94,8 @@ export const TemplateProvider = ({ children }) => {
     (async () => {
       try {
         const [catsRes, tmplRes] = await Promise.all([
-          apiRequest('/api/category/all'),
-          apiRequest('/api/template/all')
+          apiRequest('/category/all'),
+          apiRequest('/template/all')
         ]);
         const cats = ['All', ...catsRes.categories.map(c => c.name)];
         const tmpls = tmplRes.templates.map((t) => ({
@@ -118,7 +118,7 @@ export const TemplateProvider = ({ children }) => {
 
   const saveDesign = async (design) => {
     const token = localStorage.getItem('token');
-    const res = await apiRequest('/api/saved-designs', { method: 'POST', body: design, token });
+  const res = await apiRequest('/saved-designs', { method: 'POST', body: design, token });
     const saved = { ...res.design, id: res.design._id, createdAt: res.design.createdAt };
     dispatch({ type: 'SAVE_DESIGN', payload: saved });
   };
@@ -129,7 +129,7 @@ export const TemplateProvider = ({ children }) => {
 
   const deleteDesign = async (designId) => {
     const token = localStorage.getItem('token');
-    await apiRequest(`/api/saved-designs/${designId}`, { method: 'DELETE', token });
+  await apiRequest(`/saved-designs/${designId}`, { method: 'DELETE', token });
     dispatch({ type: 'DELETE_DESIGN', payload: designId });
   };
 
@@ -139,7 +139,7 @@ export const TemplateProvider = ({ children }) => {
       const token = localStorage.getItem('token');
       if (!token) return;
       try {
-        const res = await apiRequest('/api/saved-designs', { token });
+  const res = await apiRequest('/saved-designs', { token });
         const list = res.designs.map(d => ({ ...d, id: d._id }));
         // populate without a reducer action? reuse SET_TEMPLATES? Create specific action
         dispatch({ type: 'SET_FILTERS', payload: {} });
