@@ -3,28 +3,23 @@ const router = express.Router();
 const multer = require('multer');
 const path = require('path');
 const fs = require('fs');
+const { uploadToCloudinary, isCloudinaryConfigured } = require('../config/cloudinary');
 const Template = require('../models/Template');
 const Category = require('../models/Category');
 
-// Configure multer for file uploads
+// Configure multer to use a temp directory; ensure it exists
 const storage = multer.diskStorage({
   destination: function (req, file, cb) {
-    const uploadDir = path.join(__dirname, '../public/Template_images');
-    // Create directory if it doesn't exist
+    const uploadDir = path.join(__dirname, '../uploads/temp');
     if (!fs.existsSync(uploadDir)) {
       fs.mkdirSync(uploadDir, { recursive: true });
     }
     cb(null, uploadDir);
-  },
-  filename: function (req, file, cb) {
-    // Generate unique filename with timestamp
-    const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
-    cb(null, file.fieldname + '-' + uniqueSuffix + path.extname(file.originalname));
   }
 });
 
 const upload = multer({ 
-  storage: storage,
+  storage,
   fileFilter: function (req, file, cb) {
     // Check file type
     if (file.mimetype.startsWith('image/')) {
@@ -60,10 +55,28 @@ router.post('/upload', upload.single('templateImage'), async (req, res) => {
       return res.status(400).json({ success: false, error: 'Category not found' });
     }
 
-    // Create new template
+    let cloudinaryResult = null;
+    if (!isCloudinaryConfigured()) {
+      return res.status(500).json({ success: false, error: 'Cloudinary is not configured on the server' });
+    }
+
+    try {
+      cloudinaryResult = await uploadToCloudinary(file.path, 'tempify/templates', {
+        transformation: [{ quality: 'auto' }, { fetch_format: 'auto' }]
+      });
+    } catch (err) {
+      return res.status(500).json({ success: false, error: 'Image upload failed', details: err.message });
+    }
+
+    // Create new template with Cloudinary details
     const newTemplate = new Template({
       name: file.originalname,
-      path: file.filename,
+      cloudinaryPublicId: cloudinaryResult.public_id,
+      cloudinaryUrl: cloudinaryResult.secure_url,
+      // keep legacy fields
+      path: cloudinaryResult.public_id,
+      // align with user server schema expectations
+      imagePath: cloudinaryResult.public_id,
       category_id: category
     });
 

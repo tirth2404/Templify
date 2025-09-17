@@ -3,28 +3,23 @@ const router = express.Router();
 const multer = require('multer');
 const path = require('path');
 const fs = require('fs');
+const { uploadToCloudinary, isCloudinaryConfigured } = require('../config/cloudinary');
 const Frame = require('../models/Frame');
 const FrameElement = require('../models/FrameElement');
 
-// Configure multer for frame uploads
+// Configure multer to use a temp directory; ensure it exists
 const storage = multer.diskStorage({
   destination: function (req, file, cb) {
-    const uploadDir = path.join(__dirname, '../public/Frame_images');
-    // Create directory if it doesn't exist
+    const uploadDir = path.join(__dirname, '../uploads/temp');
     if (!fs.existsSync(uploadDir)) {
       fs.mkdirSync(uploadDir, { recursive: true });
     }
     cb(null, uploadDir);
-  },
-  filename: function (req, file, cb) {
-    // Generate unique filename with timestamp
-    const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
-    cb(null, file.fieldname + '-' + uniqueSuffix + path.extname(file.originalname));
   }
 });
 
 const upload = multer({ 
-  storage: storage,
+  storage,
   fileFilter: function (req, file, cb) {
     // Check file type
     if (file.mimetype.startsWith('image/')) {
@@ -49,9 +44,27 @@ router.post('/upload', upload.single('frameImage'), async (req, res) => {
       return res.status(400).json({ success: false, error: 'No file uploaded' });
     }
 
-    // Create new frame
+    if (!isCloudinaryConfigured()) {
+      return res.status(500).json({ success: false, error: 'Cloudinary is not configured on the server' });
+    }
+
+    let cloudinaryResult = null;
+    try {
+      cloudinaryResult = await uploadToCloudinary(file.path, 'tempify/frames', {
+        transformation: [{ quality: 'auto' }, { fetch_format: 'auto' }]
+      });
+    } catch (err) {
+      return res.status(500).json({ success: false, error: 'Image upload failed', details: err.message });
+    }
+
+    // Create new frame with Cloudinary details
     const newFrame = new Frame({
-      img: file.filename
+      cloudinaryPublicId: cloudinaryResult.public_id,
+      cloudinaryUrl: cloudinaryResult.secure_url,
+      // align with user server
+      imagePath: cloudinaryResult.public_id,
+      // legacy field
+      img: cloudinaryResult.public_id
     });
 
     const savedFrame = await newFrame.save();
@@ -99,9 +112,25 @@ router.post('/upload-with-elements', upload.single('frameImage'), async (req, re
       return res.status(400).json({ success: false, error: 'No elements data provided' });
     }
 
-    // Create new frame
+    if (!isCloudinaryConfigured()) {
+      return res.status(500).json({ success: false, error: 'Cloudinary is not configured on the server' });
+    }
+
+    let cloudinaryResult = null;
+    try {
+      cloudinaryResult = await uploadToCloudinary(file.path, 'tempify/frames', {
+        transformation: [{ quality: 'auto' }, { fetch_format: 'auto' }]
+      });
+    } catch (err) {
+      return res.status(500).json({ success: false, error: 'Image upload failed', details: err.message });
+    }
+
+    // Create new frame with Cloudinary details
     const newFrame = new Frame({
-      img: file.filename
+      cloudinaryPublicId: cloudinaryResult.public_id,
+      cloudinaryUrl: cloudinaryResult.secure_url,
+      imagePath: cloudinaryResult.public_id,
+      img: cloudinaryResult.public_id
     });
 
     const savedFrame = await newFrame.save();

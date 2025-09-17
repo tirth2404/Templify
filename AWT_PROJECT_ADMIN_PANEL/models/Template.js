@@ -5,9 +5,19 @@ const TemplateSchema = new mongoose.Schema({
     type: String, 
     required: true 
   },
+  // legacy local filename; keep optional for backward compatibility
   path: { 
-    type: String, 
-    required: true 
+    type: String
+  },
+  // field used by user server
+  imagePath: {
+    type: String
+  },
+  cloudinaryPublicId: {
+    type: String
+  },
+  cloudinaryUrl: {
+    type: String
   },
   category_id: { 
     type: mongoose.Schema.Types.ObjectId, 

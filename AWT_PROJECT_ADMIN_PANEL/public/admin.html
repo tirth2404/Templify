@@ -10,6 +10,7 @@
     </style>
 </head>
 <body class="bg-gray-50">
+    <link rel="icon" href="data:,">
     <div id="notification" class="fixed top-4 right-4 z-50 hidden"></div>
     
     <div class="min-h-screen flex">
@@ -211,6 +212,21 @@
     </div>
 
     <script>
+        // Simple login modal
+        const loginOverlay = document.createElement('div');
+        loginOverlay.id = 'login-overlay';
+        loginOverlay.className = 'fixed inset-0 bg-black bg-opacity-40 flex items-center justify-center hidden';
+        loginOverlay.innerHTML = `
+            <div class="bg-white w-full max-w-md rounded-lg shadow-lg p-6">
+                <h3 class="text-xl font-semibold mb-4">Admin Login</h3>
+                <form id="login-form" class="space-y-4">
+                    <input type="email" id="login-email" placeholder="Email" class="w-full px-4 py-2 border rounded-lg" required />
+                    <input type="password" id="login-password" placeholder="Password" class="w-full px-4 py-2 border rounded-lg" required />
+                    <button type="submit" class="w-full px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700">Login</button>
+                </form>
+            </div>
+        `;
+        document.body.appendChild(loginOverlay);
         const API_BASE = 'http://localhost:3000/api';
         let authToken = null;
 
@@ -247,6 +263,50 @@
                 throw error;
             }
         }
+
+        // Auth helpers
+        function setToken(token) {
+            authToken = token;
+            try { localStorage.setItem('tempify_admin_token', token); } catch {}
+        }
+
+        function getStoredToken() {
+            try { return localStorage.getItem('tempify_admin_token'); } catch { return null; }
+        }
+
+        function showLogin() {
+            loginOverlay.classList.remove('hidden');
+        }
+
+        function hideLogin() {
+            loginOverlay.classList.add('hidden');
+        }
+
+        document.addEventListener('submit', async (e) => {
+            if (e.target && e.target.id === 'login-form') {
+                e.preventDefault();
+                const email = document.getElementById('login-email').value.trim();
+                const password = document.getElementById('login-password').value;
+                try {
+                    const res = await fetch(`${API_BASE}/auth/login`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ email, password })
+                    });
+                    const data = await res.json();
+                    if (!res.ok || !data.token) {
+                        throw new Error(data.message || 'Invalid credentials');
+                    }
+                    setToken(data.token);
+                    hideLogin();
+                    showNotification('Logged in successfully');
+                    // Load default section after login
+                    showSection('dashboard');
+                } catch (err) {
+                    showNotification(`Login failed: ${err.message}`, 'error');
+                }
+            }
+        });
 
         // Navigation
         document.querySelectorAll('.nav-link').forEach(link => {
@@ -523,10 +583,13 @@
 
         // Initialize admin panel
         function init() {
-            // For demo purposes, assume admin is logged in
-            // In production, implement proper admin authentication
-            authToken = 'admin-token'; // This should come from proper login
-            loadDashboard();
+            const token = getStoredToken();
+            if (token) {
+                setToken(token);
+                showSection('dashboard');
+            } else {
+                showLogin();
+            }
         }
 
         // CSS for navigation
