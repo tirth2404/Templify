@@ -9,13 +9,13 @@ const {
   updateCategory,
   deleteCategory
 } = require('../controllers/category.controller');
-const { auth, adminAuth } = require('../middlewares/auth.middleware');
+const { auth, adminAuth } = require('../middleware/auth.middleware');
 const {
   validateMasterCategory,
   validateCategory,
   validateObjectId,
   validatePagination
-} = require('../middlewares/validation.middleware');
+} = require('../middleware/validation.middleware');
 
 // Master categories routes
 router.get('/masters', getMasterCategories);

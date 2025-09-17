@@ -22,8 +22,8 @@ const designRoutes = require('./routes/design.routes');
 const uploadRoutes = require('./routes/upload.routes');
 
 // Import middleware
-const { errorHandler } = require('./middlewares/error.middleware');
-const { notFound } = require('./middlewares/notFound.middleware');
+const { errorHandler } = require('./middleware/error.middleware');
+const { notFound } = require('./middleware/notFound.middleware');
 
 const app = express();
 
