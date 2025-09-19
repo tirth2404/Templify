@@ -45,7 +45,22 @@ router.post('/upload', upload.single('frameImage'), async (req, res) => {
     }
 
     if (!isCloudinaryConfigured()) {
-      return res.status(500).json({ success: false, error: 'Cloudinary is not configured on the server' });
+      console.log('⚠️ Cloudinary not configured, saving frame locally');
+      // Fallback: Save frame locally without Cloudinary
+      const newFrame = new Frame({
+        img: file.filename,
+        imagePath: file.path,
+        uploaded_at: new Date()
+      });
+
+      const savedFrame = await newFrame.save();
+      console.log('Frame saved locally:', savedFrame);
+
+      return res.json({ 
+        success: true, 
+        message: 'Frame uploaded successfully (local storage)',
+        frame: savedFrame
+      });
     }
 
     let cloudinaryResult = null;
@@ -113,7 +128,47 @@ router.post('/upload-with-elements', upload.single('frameImage'), async (req, re
     }
 
     if (!isCloudinaryConfigured()) {
-      return res.status(500).json({ success: false, error: 'Cloudinary is not configured on the server' });
+      console.log('⚠️ Cloudinary not configured, saving frame with elements locally');
+      // Fallback: Save frame locally without Cloudinary
+      const newFrame = new Frame({
+        img: file.filename,
+        imagePath: file.path,
+        uploaded_at: new Date()
+      });
+
+      const savedFrame = await newFrame.save();
+      console.log('Frame saved locally:', savedFrame);
+
+      // Create frame elements
+      const frameElements = [];
+      for (let i = 0; i < elementsArray.length; i++) {
+        const element = elementsArray[i];
+        const posX = parseInt(xArray[i]);
+        const posY = parseInt(yArray[i]);
+        const fontSize = element === 'logo' ? 0 : parseInt(fontSizeArray[i] || 0);
+        const fontColor = element === 'logo' ? '#000000' : (colorArray[i] || '#000000');
+
+        const newElement = new FrameElement({
+          frame_id: savedFrame._id,
+          element_type: element,
+          pos_x: posX,
+          pos_y: posY,
+          font_size: fontSize,
+          font_color: fontColor
+        });
+
+        const savedElement = await newElement.save();
+        frameElements.push(savedElement);
+      }
+
+      console.log('Frame elements saved locally:', frameElements.length);
+
+      return res.json({ 
+        success: true, 
+        message: 'Frame and elements uploaded successfully (local storage)',
+        frame: savedFrame,
+        elements: frameElements
+      });
     }
 
     let cloudinaryResult = null;

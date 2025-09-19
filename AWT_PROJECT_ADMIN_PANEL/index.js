@@ -5,21 +5,21 @@ const path = require('path');
 const mongoose = require('mongoose');
 const dotenv = require('dotenv');
 
-// Load environment variables from .env
+// ✅ Load environment variables from .env
 dotenv.config();
 
 const app = express();
-const port = process.env.PORT || 3000;
+const PORT = process.env.PORT || 3001;
 
 // ✅ Connect to MongoDB
 const mongoUri = process.env.MONGODB_URI || 'mongodb://localhost:27017/bizpostify';
 mongoose.connect(mongoUri)
-.then(() => {
-  console.log('✅ Connected to MongoDB');
-})
-.catch((err) => {
-  console.error('❌ MongoDB connection error:', err);
-});
+  .then(() => {
+    console.log('✅ Connected to MongoDB');
+  })
+  .catch((err) => {
+    console.error('❌ MongoDB connection error:', err);
+  });
 
 // Add connection event listeners for better debugging
 mongoose.connection.on('error', (err) => {
@@ -85,6 +85,10 @@ try {
   const savedDesignRoutes = require('./routes/savedDesigns');
   app.use('/api/saved-designs', savedDesignRoutes);
   console.log('✅ Saved designs routes loaded');
+
+  const adminRoutes = require('./routes/admin');
+  app.use('/api/admin', adminRoutes);
+  console.log('✅ Admin routes loaded');
 } catch (error) {
   console.error('❌ Error loading routes:', error);
 }
@@ -95,6 +99,6 @@ app.use((req, res) => {
 });
 
 // ✅ Start the server
-app.listen(port, () => {
-  console.log(`🚀 Server is running on http://localhost:${port}`);
+app.listen(PORT, () => {
+  console.log(`🚀 Server is running on http://localhost:${PORT}`);
 });

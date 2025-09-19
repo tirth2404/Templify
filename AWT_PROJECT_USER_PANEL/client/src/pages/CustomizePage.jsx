@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { useParams, useLocation, useNavigate } from 'react-router-dom';
 import { useTemplate } from '../contexts/TemplateContext';
-import { templatesApi } from '../lib/api';
+import { templatesApi, framesApi } from '../lib/api';
 import { 
   Type, 
   Palette, 
@@ -13,7 +13,8 @@ import {
   Move,
   Phone,
   Globe,
-  Mail
+  Mail,
+  Frame
 } from 'lucide-react';
 
 const CustomizePage = () => {
@@ -66,6 +67,9 @@ const CustomizePage = () => {
   const [activeTab, setActiveTab] = useState('text');
   const [logo, setLogo] = useState(null);
   const [loadingTemplate, setLoadingTemplate] = useState(!location.state?.template);
+  const [showFrameSelector, setShowFrameSelector] = useState(false);
+  const [frames, setFrames] = useState([]);
+  const [loadingFrames, setLoadingFrames] = useState(false);
 
   const pushHistory = (next) => {
     setHistory(prev => {
@@ -206,6 +210,62 @@ const CustomizePage = () => {
     })();
   }, [templateId]);
 
+  // Fetch frames when frame selector is opened
+  const fetchFrames = async () => {
+    setLoadingFrames(true);
+    try {
+      const response = await framesApi.getFramesWithElements();
+      setFrames(response.data || []);
+    } catch (error) {
+      console.error('Error fetching frames:', error);
+    } finally {
+      setLoadingFrames(false);
+    }
+  };
+
+  // Handle frame selection
+  const handleFrameSelect = async (frame) => {
+    try {
+      // Get frame with elements
+      const response = await framesApi.getFrameById(frame._id);
+      const frameData = response.data || response;
+      
+      // Set frame as background
+      const frameImageUrl = frameData.frame.imageUrl || frameData.frame.cloudinaryUrl || 
+        (frameData.frame.imagePath ? `/Frame_images/${frameData.frame.imagePath}` : '');
+      
+      setDesign(prev => ({
+        ...prev,
+        backgroundImage: frameImageUrl
+      }));
+
+      // Add frame elements to design
+      if (frameData.elements && frameData.elements.length > 0) {
+        const frameElements = frameData.elements.map((element, index) => ({
+          id: Date.now() + index,
+          type: 'text',
+          content: element.element_type === 'logo' ? '[LOGO]' : `[${element.element_type.toUpperCase()}]`,
+          x: element.pos_x || 0,
+          y: element.pos_y || 0,
+          fontSize: element.font_size || 16,
+          fontFamily: 'Inter',
+          color: element.font_color || '#000000',
+          fontWeight: 'normal'
+        }));
+
+        setDesign(prev => ({
+          ...prev,
+          elements: [...prev.elements, ...frameElements]
+        }));
+      }
+
+      setShowFrameSelector(false);
+      pushHistory(design);
+    } catch (error) {
+      console.error('Error selecting frame:', error);
+    }
+  };
+
   const downloadDesign = async (format) => {
     const canvasEl = canvasRef.current;
     if (!canvasEl) return;
@@ -331,6 +391,20 @@ const CustomizePage = () => {
                 <span>{label}</span>
               </button>
             ))}
+          </div>
+
+          {/* Select Frame Button */}
+          <div className="mb-6">
+            <button
+              onClick={() => {
+                setShowFrameSelector(true);
+                fetchFrames();
+              }}
+              className="w-full flex items-center justify-center space-x-2 px-4 py-3 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors font-medium"
+            >
+              <Frame size={20} />
+              <span>Select Frame</span>
+            </button>
           </div>
 
           {/* Text Tab */}
@@ -673,6 +747,72 @@ const CustomizePage = () => {
           </div>
         </div>
       </div>
+
+      {/* Frame Selector Modal */}
+      {showFrameSelector && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg shadow-xl max-w-4xl w-full mx-4 max-h-[80vh] overflow-hidden">
+            <div className="p-6 border-b">
+              <div className="flex justify-between items-center">
+                <h3 className="text-xl font-bold">Select a Frame</h3>
+                <button
+                  onClick={() => setShowFrameSelector(false)}
+                  className="text-gray-500 hover:text-gray-700"
+                >
+                  ✕
+                </button>
+              </div>
+            </div>
+            
+            <div className="p-6 overflow-y-auto max-h-[60vh]">
+              {loadingFrames ? (
+                <div className="flex justify-center items-center py-8">
+                  <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-purple-600"></div>
+                  <span className="ml-2">Loading frames...</span>
+                </div>
+              ) : frames.length === 0 ? (
+                <div className="text-center py-8 text-gray-500">
+                  No frames available. Please upload frames from the admin panel.
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                  {frames.map((frameData) => (
+                    <div
+                      key={frameData.frame._id}
+                      className="border border-gray-200 rounded-lg overflow-hidden hover:shadow-lg transition-shadow cursor-pointer"
+                      onClick={() => handleFrameSelect(frameData.frame)}
+                    >
+                      <div className="aspect-video bg-gray-100 relative">
+                        <img
+                          src={frameData.frame.imageUrl || frameData.frame.cloudinaryUrl || 
+                            (frameData.frame.imagePath ? `/Frame_images/${frameData.frame.imagePath}` : '')}
+                          alt="Frame"
+                          className="w-full h-full object-cover"
+                          onError={(e) => {
+                            e.target.style.display = 'none';
+                            e.target.nextSibling.style.display = 'flex';
+                          }}
+                        />
+                        <div className="absolute inset-0 bg-gray-200 flex items-center justify-center text-gray-500 hidden">
+                          <span>No Image</span>
+                        </div>
+                      </div>
+                      <div className="p-3">
+                        <h4 className="font-medium text-sm truncate">
+                          {frameData.frame.name || 'Untitled Frame'}
+                        </h4>
+                        <p className="text-xs text-gray-500">
+                          {frameData.elements?.length || 0} elements
+                        </p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

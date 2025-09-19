@@ -171,7 +171,7 @@
                 
                 <div class="bg-white p-6 rounded-lg shadow mb-6">
                     <h3 class="text-xl font-semibold mb-4">Upload Frame with Elements</h3>
-                    <form id="frame-form" class="space-y-4">
+                    <form id="frameForm" class="space-y-4">
                         <input 
                             type="text" 
                             id="frame-name" 
@@ -180,17 +180,17 @@
                         >
                         <input 
                             type="file" 
-                            id="frame-file" 
+                            id="frameImage" 
                             accept="image/*" 
                             class="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
                             required
                         >
                         
-                        <div id="frame-elements" class="space-y-4">
+                        <div id="elementsContainer" class="space-y-4">
                             <h4 class="font-semibold">Frame Elements</h4>
                         </div>
                         
-                        <button type="button" onclick="addFrameElement()" class="px-4 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700">
+                        <button type="button" onclick="addElementBlock()" class="px-4 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700">
                             Add Element
                         </button>
                         
@@ -368,11 +368,11 @@
 
         async function loadMasterCategories() {
             try {
-                const response = await apiCall('/categories/masters');
+                const response = await apiCall('/category/master-categories');
                 const select = document.getElementById('master-category-select');
                 select.innerHTML = '<option value="">Select master category</option>';
                 
-                response.data.forEach(master => {
+                response.forEach(master => {
                     const option = document.createElement('option');
                     option.value = master._id;
                     option.textContent = master.name;
@@ -385,7 +385,7 @@
 
         async function loadCategoriesList() {
             try {
-                const response = await apiCall('/categories');
+                const response = await apiCall('/category/all');
                 const container = document.getElementById('categories-list');
                 container.innerHTML = '';
                 
@@ -393,7 +393,7 @@
                     const div = document.createElement('div');
                     div.className = 'flex justify-between items-center p-3 border rounded-lg';
                     div.innerHTML = `
-                        <span>${category.name} (${category.masterId?.name || 'Unknown'})</span>
+                        <span>${category.name} (${category.master_id?.name || 'Unknown'})</span>
                         <button onclick="deleteCategory('${category._id}')" class="px-3 py-1 bg-red-600 text-white rounded hover:bg-red-700">
                             Delete
                         </button>
@@ -411,7 +411,7 @@
             const name = document.getElementById('master-category-name').value;
             
             try {
-                await apiCall('/categories/masters', {
+                await apiCall('/add-master-category', {
                     method: 'POST',
                     body: JSON.stringify({ name })
                 });
@@ -430,9 +430,9 @@
             const name = document.getElementById('category-name').value;
             
             try {
-                await apiCall('/categories', {
+                await apiCall('/category/add-category', {
                     method: 'POST',
-                    body: JSON.stringify({ name, masterId })
+                    body: JSON.stringify({ name, master_id: masterId })
                 });
                 
                 showNotification('Category added successfully!');
@@ -447,7 +447,7 @@
         async function loadTemplates() {
             // Load categories for template form
             try {
-                const response = await apiCall('/categories');
+                const response = await apiCall('/category/all');
                 const select = document.getElementById('template-category');
                 select.innerHTML = '<option value="">Select category</option>';
                 
@@ -467,14 +467,14 @@
             const formData = new FormData();
             
             formData.append('name', document.getElementById('template-name').value);
-            formData.append('categoryId', document.getElementById('template-category').value);
+            formData.append('category', document.getElementById('template-category').value);
             formData.append('description', document.getElementById('template-description').value);
             formData.append('templateImage', document.getElementById('template-file').files[0]);
             formData.append('isFeatured', document.getElementById('template-featured').checked);
             formData.append('isPremium', document.getElementById('template-premium').checked);
             
             try {
-                await fetch(`${API_BASE}/templates`, {
+                await fetch(`${API_BASE}/template/upload`, {
                     method: 'POST',
                     headers: {
                         ...(authToken && { 'Authorization': `Bearer ${authToken}` })
@@ -491,10 +491,10 @@
         });
 
         // Frame elements
-        function addFrameElement() {
-            const container = document.getElementById('frame-elements');
+        function addElementBlock() {
+            const container = document.getElementById('elementsContainer');
             const elementDiv = document.createElement('div');
-            elementDiv.className = 'p-4 border rounded-lg space-y-2';
+            elementDiv.className = 'element-block p-4 border rounded-lg space-y-2';
             
             elementDiv.innerHTML = `
                 <select name="elements[]" class="w-full px-3 py-2 border rounded" required>
@@ -525,7 +525,86 @@
         }
 
         // Initialize frame elements
-        addFrameElement();
+        addElementBlock();
+
+        // Frame upload form handler
+        document.getElementById('frameForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            
+            const formData = new FormData();
+            const fileInput = document.getElementById('frameImage');
+            
+            if (!fileInput.files[0]) {
+                showNotification('Please select a frame image', 'error');
+                return;
+            }
+            
+            formData.append('frameImage', fileInput.files[0]);
+            
+            // Get all element data
+            const elements = [];
+            const xPositions = [];
+            const yPositions = [];
+            const fontSizes = [];
+            const colors = [];
+            
+            const elementBlocks = document.querySelectorAll('.element-block');
+            
+            for (const block of elementBlocks) {
+                const elementSelect = block.querySelector('select[name="elements[]"]');
+                const xInput = block.querySelector('input[name="x[]"]');
+                const yInput = block.querySelector('input[name="y[]"]');
+                const fontSizeInput = block.querySelector('input[name="font_size[]"]');
+                const colorInput = block.querySelector('input[name="color[]"]');
+                
+                if (elementSelect.value && xInput.value && yInput.value) {
+                    elements.push(elementSelect.value);
+                    xPositions.push(xInput.value);
+                    yPositions.push(yInput.value);
+                    fontSizes.push(fontSizeInput.value || '0');
+                    colors.push(colorInput.value || '#000000');
+                }
+            }
+            
+            if (elements.length === 0) {
+                showNotification('Please add at least one element position', 'error');
+                return;
+            }
+            
+            // Add element data to form
+            elements.forEach((element, index) => {
+                formData.append('elements', element);
+                formData.append('x', xPositions[index]);
+                formData.append('y', yPositions[index]);
+                formData.append('font_size', fontSizes[index]);
+                formData.append('color', colors[index]);
+            });
+            
+            try {
+                const response = await fetch(`${API_BASE}/frame/upload-with-elements`, {
+                    method: 'POST',
+                    headers: {
+                        ...(authToken && { 'Authorization': `Bearer ${authToken}` })
+                    },
+                    body: formData
+                });
+                
+                const result = await response.json();
+                
+                if (result.success) {
+                    showNotification('Frame and elements uploaded successfully!');
+                    document.getElementById('frameForm').reset();
+                    // Clear element blocks
+                    document.getElementById('elementsContainer').innerHTML = '<h4 class="font-semibold">Frame Elements</h4>';
+                    addElementBlock(); // Add one default element block
+                } else {
+                    showNotification(`Upload failed: ${result.error || 'Unknown error'}`, 'error');
+                }
+            } catch (error) {
+                console.error('Frame upload error:', error);
+                showNotification(`Upload error: ${error.message}`, 'error');
+            }
+        });
 
         // Users
         async function loadUsers() {
